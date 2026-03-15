@@ -1,7 +1,28 @@
+<div align="center">
+
 # Claude Dashboard
 
-Claude Code 사용량을 실시간으로 시각화하는 개인용 대시보드.
-`~/.claude/projects/` 아래 JSONL 파일을 직접 파싱해 비용·토큰·세션·패턴을 분석한다.
+**Claude Code 사용량 시각화 대시보드**
+
+`~/.claude/projects/` 아래 JSONL 파일을 직접 파싱해 비용·토큰·세션·패턴을 실시간으로 분석한다.
+
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06b6d4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+
+</div>
+
+---
+
+## 스크린샷
+
+### 메인 대시보드
+
+![메인 대시보드](docs/images/main.png)
+
+### 통계 탭
+
+![통계 탭](docs/images/statistics.png)
 
 ---
 
@@ -97,11 +118,10 @@ Claude 사용량 제한은 UTC 기준 5시간 윈도우 단위로 적용됨.
 
 **모델별 사용 분포**
 도넛 파이차트 + 모델별 카드 (비용, KRW, 비율, 토큰).
-제목 옆에 전체 누적 비용 표시.
 
 **프로젝트별 사용 분포**
 동일 구조. 세션 데이터를 프로젝트명으로 집계.
-프로젝트명은 홈 디렉터리 경로 prefix 자동 제거 (예: `-home-lemon-repo-` 제거).
+프로젝트명은 홈 디렉터리 경로 prefix 자동 제거.
 
 **캐시 효율**
 - 절약한 비용 (총액) + 히트율 수치 카드
@@ -124,12 +144,8 @@ Claude 사용량 제한은 UTC 기준 5시간 윈도우 단위로 적용됨.
 #### 하단 — 프로젝트 분석 & 세션 목록
 
 **프로젝트 효율 비교 (산점도)**
-- x축: 세션 수
-- y축: 총비용
-- 점 크기: 세션당 평균 비용
+- x축: 세션 수 / y축: 총비용 / 점 크기: 세션당 평균 비용
 - 호버 시 프로젝트명·총비용·세션 수·세션당 비용 툴팁
-
-"자주 쓰지만 저렴한 프로젝트" vs "가끔 쓰는데 비싼 프로젝트" 구분 가능.
 
 **세션 목록**
 비용 내림차순 정렬. 프로젝트명 검색 가능.
@@ -162,7 +178,7 @@ Claude 사용량 제한은 UTC 기준 5시간 윈도우 단위로 적용됨.
 
 ### 플랜 한도
 
-Anthropic 공식 API 없음. [CCTray](https://github.com/goniszewski/cctray) 등 커뮤니티 역산 추정값 사용.
+Anthropic 공식 API 없음. 커뮤니티 역산 추정값 사용.
 실제 한도 확인: [claude.ai/settings/usage](https://claude.ai/settings/usage)
 
 | 플랜 | 월 요금 | 추정 한도 (5시간 블록당) |
@@ -206,9 +222,9 @@ Anthropic 공식 API 없음. [CCTray](https://github.com/goniszewski/cctray) 등
 
 | 영역 | 라이브러리 |
 |------|-----------|
-| 프레임워크 | Next.js 15 (App Router) |
-| 언어 | TypeScript |
-| 스타일 | Tailwind CSS |
+| 프레임워크 | Next.js 16 (App Router) |
+| 언어 | TypeScript 5 |
+| 스타일 | Tailwind CSS 4 |
 | 차트 | Recharts |
 | 데이터 페칭 | SWR (30초 폴링) |
 | 파싱 | Node.js fs + readline (서버사이드) |
