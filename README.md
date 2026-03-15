@@ -1,3 +1,17 @@
+## 실행
+
+```bash
+# 빌드 + 실행
+docker compose up -d --build
+
+# 이후 재실행
+docker compose up -d
+```
+
+`http://localhost:3777` 에서 확인. WSL 시작 시 자동으로 올라옵니다.
+
+---
+
 <div align="center">
 
 # Claude Dashboard

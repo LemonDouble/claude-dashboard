@@ -238,7 +238,7 @@ export function StatsTab() {
                     }}
                   />
                   <Scatter
-                    data={projectData.map((p) => ({ ...p, avgCost: p.sessionCount > 0 ? p.totalCost / p.sessionCount : 0 }))}
+                    data={projectData.map((p) => ({ ...p, avgCost: (p.sessionCount ?? 0) > 0 ? p.totalCost / p.sessionCount! : 0 }))}
                     fill="#3b82f6"
                     fillOpacity={0.8}
                   />

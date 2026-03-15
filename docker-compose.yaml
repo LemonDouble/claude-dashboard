@@ -1,0 +1,11 @@
+services:
+  claude-dashboard:
+    build: .
+    ports:
+      - "3777:3000"
+    volumes:
+      - ~/.claude:/home/node/.claude:ro
+    environment:
+      - CLAUDE_PATH=/home/node/.claude
+      - TZ=Asia/Seoul
+    restart: always
