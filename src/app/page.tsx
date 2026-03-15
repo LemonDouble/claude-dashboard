@@ -2,6 +2,7 @@
 
 import useSWR from 'swr';
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import { UsageSummary } from '@/types';
 import { formatCost, formatKRW } from '@/lib/format';
 import { useExchangeRate } from '@/lib/useExchangeRate';
@@ -133,6 +134,7 @@ function DashboardInner() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 shrink-0">
         <div className="flex items-center gap-3">
+          <Image src="/lemon_logo.webp" alt="logo" width={28} height={28} className="rounded-full" />
           <span className="text-sm font-bold tracking-tight text-white">Claude 대시보드</span>
           <div className="flex gap-1">
             {SUB_TABS.map((tab) => (
