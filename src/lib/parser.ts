@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import readline from 'readline';
 import { TokenUsage, DailyUsage, SessionUsage, BillingBlock, BurnRate, Projection, UsageSummary, ModelUsage, CacheStats, HourlyPattern, DayOfWeekPattern } from '@/types';
 
@@ -198,26 +199,123 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
   return records;
 }
 
-let _cache: { data: ParsedRecord[]; builtAt: number } | null = null;
-const CACHE_TTL = 30_000; // 30s
+// ── 캐시 레이어 ────────────────────────────────────────────────────────
+// 1) 파일별 파싱 결과를 mtime + size 키로 메모리에 보관
+// 2) _recordsVersion을 파일 변경 시마다 bump → aggregate 함수들이 버전 키로 메모이즈
+// 3) CACHE_DIR에 디바운스 저장 → 서버 재시작 후 콜드 스타트 제거
 
-export async function getAllRecords(): Promise<ParsedRecord[]> {
-  if (_cache && Date.now() - _cache.builtAt < CACHE_TTL) return _cache.data;
+interface FileCacheEntry {
+  mtimeMs: number;
+  size: number;
+  records: ParsedRecord[];
+}
+
+const _fileCache = new Map<string, FileCacheEntry>();
+let _mergedCache: ParsedRecord[] | null = null;
+let _recordsVersion = 0;
+let _diskLoaded = false;
+let _inflight: Promise<ParsedRecord[]> | null = null;
+
+const CACHE_DIR = process.env.CACHE_DIR || path.join(os.tmpdir(), 'claude-dashboard-cache');
+const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
+const DISK_CACHE_VERSION = 1;
+
+function loadDiskCache(): void {
+  try {
+    if (!fs.existsSync(DISK_CACHE_FILE)) return;
+    const raw = fs.readFileSync(DISK_CACHE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== DISK_CACHE_VERSION || !Array.isArray(parsed.entries)) return;
+    for (const [p, e] of parsed.entries as Array<[string, { mtimeMs: number; size: number; records: Array<Omit<ParsedRecord, 'timestamp'> & { timestamp: string }> }]>) {
+      const records: ParsedRecord[] = e.records.map((r) => ({ ...r, timestamp: new Date(r.timestamp) }));
+      _fileCache.set(p, { mtimeMs: e.mtimeMs, size: e.size, records });
+    }
+  } catch {
+    _fileCache.clear();
+  }
+}
+
+let _saveTimer: NodeJS.Timeout | null = null;
+function scheduleDiskSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    _saveTimer = null;
+    try {
+      await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+      const entries = Array.from(_fileCache.entries()).map(([p, e]) => [p, {
+        mtimeMs: e.mtimeMs,
+        size: e.size,
+        records: e.records.map((r) => ({ ...r, timestamp: r.timestamp.toISOString() })),
+      }]);
+      const payload = JSON.stringify({ version: DISK_CACHE_VERSION, entries });
+      const tmp = DISK_CACHE_FILE + '.tmp';
+      await fs.promises.writeFile(tmp, payload);
+      await fs.promises.rename(tmp, DISK_CACHE_FILE);
+    } catch {}
+  }, 5_000);
+}
+
+async function doGetAllRecords(): Promise<ParsedRecord[]> {
+  if (!_diskLoaded) {
+    loadDiskCache();
+    _diskLoaded = true;
+  }
 
   const claudePath = getClaudePath();
   const files = findJsonlFiles(claudePath);
-  const allRecords: ParsedRecord[] = [];
+  const currentSet = new Set(files);
 
-  await Promise.all(
-    files.map(async (f) => {
+  let dirty = false;
+
+  // 사라진 파일 제거
+  for (const k of Array.from(_fileCache.keys())) {
+    if (!currentSet.has(k)) {
+      _fileCache.delete(k);
+      dirty = true;
+    }
+  }
+
+  // 변경된 파일만 재파싱
+  await Promise.all(files.map(async (f) => {
+    try {
+      const st = await fs.promises.stat(f);
+      const cached = _fileCache.get(f);
+      if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return;
       const records = await parseFile(f, claudePath);
-      allRecords.push(...records);
-    })
-  );
+      _fileCache.set(f, { mtimeMs: st.mtimeMs, size: st.size, records });
+      dirty = true;
+    } catch {}
+  }));
 
-  allRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-  _cache = { data: allRecords, builtAt: Date.now() };
-  return allRecords;
+  if (!dirty && _mergedCache) return _mergedCache;
+
+  // 전체 목록 재구성
+  const merged: ParsedRecord[] = [];
+  for (const e of _fileCache.values()) merged.push(...e.records);
+  merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  _mergedCache = merged;
+  _recordsVersion++;
+
+  if (dirty) scheduleDiskSave();
+
+  return merged;
+}
+
+export async function getAllRecords(): Promise<ParsedRecord[]> {
+  if (_inflight) return _inflight;
+  _inflight = doGetAllRecords().finally(() => { _inflight = null; });
+  return _inflight;
+}
+
+// ── Aggregate 결과 메모이즈 (records 버전 키) ──────────────────────────
+const _aggCache = new Map<string, { version: number; data: unknown }>();
+
+async function memoByVersion<T>(key: string, compute: () => Promise<T> | T): Promise<T> {
+  const existing = _aggCache.get(key);
+  if (existing && existing.version === _recordsVersion) return existing.data as T;
+  const data = await compute();
+  _aggCache.set(key, { version: _recordsVersion, data });
+  return data;
 }
 
 // --- Aggregation helpers ---
@@ -417,150 +515,157 @@ function getProjections(daily: DailyUsage[], now: Date): Projection[] {
 
 export async function getModelUsage(): Promise<ModelUsage[]> {
   const records = await getAllRecords();
-  const modelMap = new Map<string, TokenUsage>();
+  return memoByVersion('models', () => {
+    const modelMap = new Map<string, TokenUsage>();
 
-  for (const r of records) {
-    modelMap.set(r.family, addUsage(modelMap.get(r.family) || emptyUsage(), r.usage));
-  }
+    for (const r of records) {
+      modelMap.set(r.family, addUsage(modelMap.get(r.family) || emptyUsage(), r.usage));
+    }
 
-  const total = Array.from(modelMap.values()).reduce((s, u) => s + u.totalCost, 0);
+    const total = Array.from(modelMap.values()).reduce((s, u) => s + u.totalCost, 0);
 
-  return Array.from(modelMap.entries())
-    .map(([model, usage]) => ({
-      model,
-      family: model,
-      usage,
-      percentage: total > 0 ? (usage.totalCost / total) * 100 : 0,
-    }))
-    .sort((a, b) => b.usage.totalCost - a.usage.totalCost);
+    return Array.from(modelMap.entries())
+      .map(([model, usage]) => ({
+        model,
+        family: model,
+        usage,
+        percentage: total > 0 ? (usage.totalCost / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.usage.totalCost - a.usage.totalCost);
+  });
 }
 
 export async function getCacheStats(): Promise<CacheStats> {
   const records = await getAllRecords();
+  return memoByVersion('cacheStats', () => {
+    let totalSaved = 0;
+    const dailyMap = new Map<string, { saved: number; cacheRead: number; input: number }>();
 
-  // Savings = what cacheRead tokens would have cost as input tokens
-  let totalSaved = 0;
-  const dailyMap = new Map<string, { saved: number; cacheRead: number; input: number }>();
+    for (const r of records) {
+      const p = getPricing(r.model);
+      const savedForRecord = (r.usage.cacheReadTokens * (p.input - p.cacheRead)) / 1_000_000;
+      totalSaved += savedForRecord;
 
-  for (const r of records) {
-    const p = getPricing(r.model);
-    const savedForRecord = (r.usage.cacheReadTokens * (p.input - p.cacheRead)) / 1_000_000;
-    totalSaved += savedForRecord;
+      const dateStr = toLocalDateStr(r.timestamp);
+      const entry = dailyMap.get(dateStr) || { saved: 0, cacheRead: 0, input: 0 };
+      entry.saved += savedForRecord;
+      entry.cacheRead += r.usage.cacheReadTokens;
+      entry.input += r.usage.inputTokens;
+      dailyMap.set(dateStr, entry);
+    }
 
-    const dateStr = toLocalDateStr(r.timestamp);
-    const entry = dailyMap.get(dateStr) || { saved: 0, cacheRead: 0, input: 0 };
-    entry.saved += savedForRecord;
-    entry.cacheRead += r.usage.cacheReadTokens;
-    entry.input += r.usage.inputTokens;
-    dailyMap.set(dateStr, entry);
-  }
+    const totalCacheRead = records.reduce((s, r) => s + r.usage.cacheReadTokens, 0);
+    const totalInput = records.reduce((s, r) => s + r.usage.inputTokens, 0);
+    const efficiency = totalInput + totalCacheRead > 0
+      ? (totalCacheRead / (totalInput + totalCacheRead)) * 100
+      : 0;
 
-  const totalCacheRead = records.reduce((s, r) => s + r.usage.cacheReadTokens, 0);
-  const totalInput = records.reduce((s, r) => s + r.usage.inputTokens, 0);
-  const efficiency = totalInput + totalCacheRead > 0
-    ? (totalCacheRead / (totalInput + totalCacheRead)) * 100
-    : 0;
+    const dailyStats = Array.from(dailyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-30)
+      .map(([date, { saved, cacheRead, input }]) => ({
+        date,
+        efficiency: cacheRead + input > 0 ? (cacheRead / (cacheRead + input)) * 100 : 0,
+        saved,
+      }));
 
-  const dailyStats = Array.from(dailyMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-30)
-    .map(([date, { saved, cacheRead, input }]) => ({
-      date,
-      efficiency: cacheRead + input > 0 ? (cacheRead / (cacheRead + input)) * 100 : 0,
-      saved,
-    }));
-
-  return { totalSaved, efficiency, daily: dailyStats };
+    return { totalSaved, efficiency, daily: dailyStats };
+  });
 }
 
 export async function getSessions(): Promise<import('@/types').SessionUsage[]> {
   const records = await getAllRecords();
-  const sessionMap = new Map<string, { usage: TokenUsage; lastActivity: Date; projectName: string }>();
+  return memoByVersion('sessions', () => {
+    const sessionMap = new Map<string, { usage: TokenUsage; lastActivity: Date; projectName: string }>();
 
-  for (const r of records) {
-    const key = r.sessionId;
-    const existing = sessionMap.get(key);
-    if (!existing) {
-      sessionMap.set(key, { usage: r.usage, lastActivity: r.timestamp, projectName: r.projectName });
-    } else {
-      existing.usage = addUsage(existing.usage, r.usage);
-      if (r.timestamp > existing.lastActivity) existing.lastActivity = r.timestamp;
+    for (const r of records) {
+      const key = r.sessionId;
+      const existing = sessionMap.get(key);
+      if (!existing) {
+        sessionMap.set(key, { usage: r.usage, lastActivity: r.timestamp, projectName: r.projectName });
+      } else {
+        existing.usage = addUsage(existing.usage, r.usage);
+        if (r.timestamp > existing.lastActivity) existing.lastActivity = r.timestamp;
+      }
     }
-  }
 
-  return Array.from(sessionMap.entries())
-    .map(([sessionId, { usage, lastActivity, projectName }]) => ({
-      sessionId,
-      projectName,
-      lastActivity: lastActivity.toISOString(),
-      ...usage,
-    }))
-    .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
+    return Array.from(sessionMap.entries())
+      .map(([sessionId, { usage, lastActivity, projectName }]) => ({
+        sessionId,
+        projectName,
+        lastActivity: lastActivity.toISOString(),
+        ...usage,
+      }))
+      .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
+  });
 }
 
 export async function getPatterns(): Promise<{ hourly: HourlyPattern[]; dayOfWeek: DayOfWeekPattern[] }> {
   const records = await getAllRecords();
+  return memoByVersion('patterns', () => {
+    const hourlyMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
+    const dowMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
 
-  const hourlyMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
-  const dowMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
+    for (const r of records) {
+      const hour = r.timestamp.getHours(); // local
+      const dow = r.timestamp.getDay();
 
-  for (const r of records) {
-    const hour = r.timestamp.getHours(); // local
-    const dow = r.timestamp.getDay();
+      const h = hourlyMap.get(hour) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
+      h.cost += r.usage.totalCost;
+      h.tokens += r.usage.totalTokens;
+      h.sessions.add(r.sessionId);
+      h.count++;
+      hourlyMap.set(hour, h);
 
-    const h = hourlyMap.get(hour) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
-    h.cost += r.usage.totalCost;
-    h.tokens += r.usage.totalTokens;
-    h.sessions.add(r.sessionId);
-    h.count++;
-    hourlyMap.set(hour, h);
+      const d = dowMap.get(dow) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
+      d.cost += r.usage.totalCost;
+      d.tokens += r.usage.totalTokens;
+      d.sessions.add(r.sessionId);
+      d.count++;
+      dowMap.set(dow, d);
+    }
 
-    const d = dowMap.get(dow) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
-    d.cost += r.usage.totalCost;
-    d.tokens += r.usage.totalTokens;
-    d.sessions.add(r.sessionId);
-    d.count++;
-    dowMap.set(dow, d);
-  }
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const hourly: HourlyPattern[] = Array.from({ length: 24 }, (_, hour) => {
+      const e = hourlyMap.get(hour);
+      return {
+        hour,
+        avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
+        avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
+        sessionCount: e ? e.sessions.size : 0,
+      };
+    });
 
-  const hourly: HourlyPattern[] = Array.from({ length: 24 }, (_, hour) => {
-    const e = hourlyMap.get(hour);
-    return {
-      hour,
-      avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
-      avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
-      sessionCount: e ? e.sessions.size : 0,
-    };
+    const dayOfWeek: DayOfWeekPattern[] = Array.from({ length: 7 }, (_, i) => {
+      const e = dowMap.get(i);
+      return {
+        day: days[i],
+        dayIndex: i,
+        avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
+        avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
+        sessionCount: e ? e.sessions.size : 0,
+      };
+    });
+
+    return { hourly, dayOfWeek };
   });
-
-  const dayOfWeek: DayOfWeekPattern[] = Array.from({ length: 7 }, (_, i) => {
-    const e = dowMap.get(i);
-    return {
-      day: days[i],
-      dayIndex: i,
-      avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
-      avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
-      sessionCount: e ? e.sessions.size : 0,
-    };
-  });
-
-  return { hourly, dayOfWeek };
 }
 
 export async function getHourlyCosts(): Promise<{ datetime: string; cost: number }[]> {
   const records = await getAllRecords();
-  const map = new Map<string, number>();
+  return memoByVersion('hourlyCosts', () => {
+    const map = new Map<string, number>();
 
-  for (const r of records) {
-    // key: "YYYY-MM-DD HH" in local time
-    const d = r.timestamp;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}`;
-    map.set(key, (map.get(key) ?? 0) + r.usage.totalCost);
-  }
+    for (const r of records) {
+      // key: "YYYY-MM-DD HH" in local time
+      const d = r.timestamp;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}`;
+      map.set(key, (map.get(key) ?? 0) + r.usage.totalCost);
+    }
 
-  return Array.from(map.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([datetime, cost]) => ({ datetime, cost }));
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([datetime, cost]) => ({ datetime, cost }));
+  });
 }
