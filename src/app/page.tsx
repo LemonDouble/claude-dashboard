@@ -13,7 +13,6 @@ import { BurnRatePanel } from '@/components/BurnRatePanel';
 import { DailyChart } from '@/components/charts/DailyChart';
 import { ProjectionChart } from '@/components/charts/ProjectionChart';
 import { StatsTab } from '@/components/StatsTab';
-import { PlanUsageBar } from '@/components/PlanUsageBar';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -184,7 +183,7 @@ function DashboardInner() {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-hidden p-3 grid grid-rows-[auto_auto_1fr_auto] gap-3">
+      <main className="flex-1 overflow-hidden p-3 grid grid-rows-[auto_1fr_auto] gap-3">
         {/* Row 1: KPI cards */}
         <div className="grid grid-cols-6 gap-2 shrink-0">
           <KpiCard
@@ -229,12 +228,7 @@ function DashboardInner() {
           />
         </div>
 
-        {/* Row 2: Plan usage */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 shrink-0">
-          <PlanUsageBar billingBlocks={data.billingBlocks} />
-        </div>
-
-        {/* Row 3: Main charts */}
+        {/* Row 2: Main charts */}
         <div className="grid grid-cols-3 gap-3 min-h-0">
           {/* Daily chart - 2 cols */}
           <div className="col-span-2 bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex flex-col min-h-0">

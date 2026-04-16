@@ -23,12 +23,12 @@ export interface MonthlyUsage extends TokenUsage {
 }
 
 export interface BillingBlock {
-  blockIndex: number; // 0-4
-  startHour: number; // UTC hour
-  endHour: number;
+  blockIndex: number;
+  startTime: string; // ISO 8601
+  endTime: string;   // ISO 8601 (startTime + 5h)
   usage: TokenUsage;
   promptCount: number; // API 호출 횟수 (메시지 수)
-  isActive: boolean;
+  isActive: boolean;  // true면 now가 이 블록 윈도우 내에 있음
   label: string;
 }
 

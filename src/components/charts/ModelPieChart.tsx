@@ -5,6 +5,7 @@ import { formatCost } from '@/lib/format';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const MODEL_COLORS: Record<string, string> = {
+  'claude-opus-4-7': '#fbbf24',
   'claude-opus-4': '#f59e0b',
   'claude-sonnet-4': '#3b82f6',
   'claude-3-5-sonnet': '#6366f1',

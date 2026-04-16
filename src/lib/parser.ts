@@ -8,6 +8,7 @@ import { TokenUsage, DailyUsage, SessionUsage, BillingBlock, BurnRate, Projectio
 // cacheCreate = 5분 캐시 쓰기 요금 기준
 const PRICING: Record<string, { input: number; output: number; cacheCreate: number; cacheRead: number }> = {
   // Claude Opus 4.x 계열
+  'opus-4-7':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.7
   'opus-4-6':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.6
   'opus-4-5':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.5
   'opus-4-1':         { input: 15.0, output: 75.0,  cacheCreate: 18.75, cacheRead: 1.5  }, // Opus 4.1
@@ -39,6 +40,7 @@ function getModelFamily(model: string): string {
   if (!model) return 'unknown';
   const lower = model.toLowerCase();
   // Claude Opus 4.x (구체적 버전 먼저)
+  if (lower.includes('opus-4-7'))  return 'claude-opus-4-7';
   if (lower.includes('opus-4-6'))  return 'claude-opus-4-6';
   if (lower.includes('opus-4-5'))  return 'claude-opus-4-5';
   if (lower.includes('opus-4-1'))  return 'claude-opus-4-1';
@@ -298,32 +300,55 @@ export async function getUsageSummary(): Promise<UsageSummary> {
 }
 
 function getBillingBlocks(records: ParsedRecord[], now: Date): BillingBlock[] {
-  // 5h UTC blocks: 0-5, 5-10, 10-15, 15-20, 20-25(=0)
-  const blockStarts = [0, 5, 10, 15, 20];
-  const nowUtcHour = now.getUTCHours();
-  const activeBlockIdx = blockStarts.findLastIndex((h) => nowUtcHour >= h);
+  // Anthropic 5시간 롤링 윈도우:
+  //   - 첫 메시지 시각을 "시간 단위로 버림"해서 블록 시작 (UTC 기준)
+  //   - 블록 종료 = 시작 + 5시간
+  //   - 현재 블록 종료 이후의 첫 메시지가 새 블록 시작
+  //   - 또는 마지막 메시지 이후 5시간 이상 공백이 있으면 새 블록 시작
+  const BLOCK_MS = 5 * 3600_000;
 
-  // Look at today's records in UTC
-  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (records.length === 0) return [];
 
-  return blockStarts.map((startHour, i) => {
-    const endHour = startHour + 5;
-    const blockStart = new Date(todayUtc.getTime() + startHour * 3600_000);
-    const blockEnd = new Date(todayUtc.getTime() + endHour * 3600_000);
+  // records는 getAllRecords()에서 이미 timestamp 오름차순 정렬됨
+  interface Bucket { start: Date; end: Date; records: ParsedRecord[]; }
+  const buckets: Bucket[] = [];
 
-    const blockRecords = records.filter(
-      (r) => r.timestamp >= blockStart && r.timestamp < blockEnd
-    );
-    const usage = blockRecords.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
+  for (const r of records) {
+    const last = buckets[buckets.length - 1];
+    const lastTs = last?.records[last.records.length - 1].timestamp;
+    const startNewBlock =
+      !last ||
+      r.timestamp.getTime() >= last.end.getTime() ||
+      (lastTs && r.timestamp.getTime() - lastTs.getTime() >= BLOCK_MS);
 
+    if (startNewBlock) {
+      // 시간 단위로 버림 (UTC)
+      const start = new Date(Date.UTC(
+        r.timestamp.getUTCFullYear(),
+        r.timestamp.getUTCMonth(),
+        r.timestamp.getUTCDate(),
+        r.timestamp.getUTCHours(),
+      ));
+      buckets.push({ start, end: new Date(start.getTime() + BLOCK_MS), records: [r] });
+    } else {
+      last!.records.push(r);
+    }
+  }
+
+  // 최근 5개만 (최신이 오른쪽에 오도록 그대로 둠)
+  const recent = buckets.slice(-5);
+
+  return recent.map((b, i) => {
+    const usage = b.records.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
+    const isActive = now.getTime() >= b.start.getTime() && now.getTime() < b.end.getTime();
     return {
       blockIndex: i,
-      startHour,
-      endHour: endHour === 25 ? 0 : endHour,
+      startTime: b.start.toISOString(),
+      endTime: b.end.toISOString(),
       usage,
-      promptCount: blockRecords.length,
-      isActive: i === activeBlockIdx,
-      label: `${String(startHour).padStart(2, '0')}:00-${String(endHour >= 24 ? endHour - 24 : endHour).padStart(2, '0')}:00 UTC`,
+      promptCount: b.records.length,
+      isActive,
+      label: `${b.start.toISOString().slice(11, 16)}–${b.end.toISOString().slice(11, 16)} UTC`,
     };
   });
 }
