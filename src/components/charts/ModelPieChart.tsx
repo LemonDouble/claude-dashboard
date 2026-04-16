@@ -2,18 +2,8 @@
 
 import { ModelUsage } from '@/types';
 import { formatCost } from '@/lib/format';
+import { modelColor } from '@/lib/chartPalette';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-const MODEL_COLORS: Record<string, string> = {
-  'claude-opus-4-7': '#fbbf24',
-  'claude-opus-4': '#f59e0b',
-  'claude-sonnet-4': '#3b82f6',
-  'claude-3-5-sonnet': '#6366f1',
-  'claude-3-5-haiku': '#10b981',
-  'claude-3-haiku': '#22d3ee',
-  'claude-3-opus': '#f97316',
-};
-const DEFAULT_COLOR = '#8b5cf6';
 
 interface Props {
   data: ModelUsage[];
@@ -24,10 +14,10 @@ export function ModelPieChart({ data }: Props) {
     if (!active || !payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs">
+      <div className="bg-card border border-border rounded-md p-2 text-xs">
         <div className="font-semibold" style={{ color: p.payload.fill }}>{p.name}</div>
-        <div className="text-white">{formatCost(p.payload.usage.totalCost)}</div>
-        <div className="text-zinc-400">{p.value.toFixed(1)}%</div>
+        <div className="text-foreground">{formatCost(p.payload.usage.totalCost)}</div>
+        <div className="text-muted-foreground">{p.value.toFixed(1)}%</div>
       </div>
     );
   };
@@ -46,13 +36,13 @@ export function ModelPieChart({ data }: Props) {
           paddingAngle={2}
         >
           {data.map((entry) => (
-            <Cell key={entry.model} fill={MODEL_COLORS[entry.model] || DEFAULT_COLOR} />
+            <Cell key={entry.model} fill={modelColor(entry.model)} />
           ))}
         </Pie>
         <Tooltip content={<CustomTooltip />} />
         <Legend
           formatter={(value) => (
-            <span style={{ color: MODEL_COLORS[value] || DEFAULT_COLOR, fontSize: 11 }}>{value}</span>
+            <span style={{ color: modelColor(value), fontSize: 11 }}>{value}</span>
           )}
         />
       </PieChart>

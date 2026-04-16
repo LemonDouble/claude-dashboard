@@ -2,35 +2,38 @@
 
 import { ReactNode } from 'react';
 
+type Accent = 'default' | 'primary' | 'secondary' | 'destructive';
+
 interface KpiCardProps {
   title: string;
   value: string;
   krw?: string;
   sub?: string;
   icon?: ReactNode;
-  accent?: 'default' | 'green' | 'yellow' | 'red' | 'blue';
+  accent?: Accent;
 }
 
-const accentMap = {
-  default: 'border-zinc-700',
-  green: 'border-emerald-500',
-  yellow: 'border-yellow-500',
-  red: 'border-red-500',
-  blue: 'border-blue-500',
+const accentBar: Record<Accent, string> = {
+  default: 'border-l-border',
+  primary: 'border-l-primary',
+  secondary: 'border-l-secondary',
+  destructive: 'border-l-destructive',
 };
 
 export function KpiCard({ title, value, krw, sub, icon, accent = 'default' }: KpiCardProps) {
   return (
-    <div className={`bg-zinc-900 border ${accentMap[accent]} border-l-2 rounded-lg p-3 flex flex-col gap-1`}>
-      <div className="flex items-center justify-between text-zinc-400 text-xs">
+    <div
+      className={`bg-card border border-border border-l-2 ${accentBar[accent]} rounded-xl p-3 flex flex-col gap-1 transition-colors hover:border-primary-dim`}
+    >
+      <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
         <span>{title}</span>
         {icon && <span className="opacity-60">{icon}</span>}
       </div>
-      <div className="text-xl font-bold text-white leading-tight">
+      <div className="text-xl font-semibold text-foreground leading-tight">
         {value}
-        {krw && <span className="text-xs font-normal text-zinc-500 ml-1.5">{krw}</span>}
+        {krw && <span className="text-xs font-normal text-muted-foreground/70 ml-1.5">{krw}</span>}
       </div>
-      {sub && <div className="text-xs text-zinc-500">{sub}</div>}
+      {sub && <div className="text-xs text-muted-foreground/70">{sub}</div>}
     </div>
   );
 }

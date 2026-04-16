@@ -1,119 +1,240 @@
+/* Pretendard (본문) · Galmuri11 (픽셀 헤더) – 모든 @import 는 맨 위에 */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+@import url("https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/galmuri.css");
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   Lemon Design System – 웜톤 다크 전용 팔레트
+   ============================================================
+   • 배경: 웜톤 다크 (#12100E)
+   • 포인트: 레몬 옐로우 (#F0B90B) / 코랄 (#CD6B5E)
+   • 텍스트: 웜 화이트 (#F5F0EB)
+   • 폰트: 본문 Pretendard / 헤더·라벨 Galmuri11(Bold)
+   • 그림자 금지 — depth는 보더와 색상 변화로
+*/
+
 @theme inline {
+  /* ── 페이지/카드/텍스트 (shadcn semantic) ── */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* ── Sidebar ── */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ── Chart (차트 전용 단색 팔레트) ── */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* ── 폰트 ── */
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Galmuri11", "Pretendard", sans-serif;
+
+  /* ── 라운딩 (디자인 시스템: 4/6/8/12/...) ── */
+  --radius-sm: calc(var(--radius) * 0.5);   /* 4px  – 코드/뱃지 */
+  --radius-md: calc(var(--radius) * 0.75);  /* 6px  – 작은 버튼 */
+  --radius-lg: var(--radius);               /* 8px  – 버튼/인풋 */
+  --radius-xl: calc(var(--radius) * 1.5);   /* 12px – 카드 */
+  --radius-2xl: calc(var(--radius) * 2);    /* 16px */
+  --radius-3xl: calc(var(--radius) * 2.5);  /* 20px */
+  --radius-4xl: calc(var(--radius) * 3);    /* 24px */
+
+  /* ── zinc 스케일을 웜톤으로 리매핑 ──
+     기존 코드가 zinc-950=페이지 / zinc-900=카드 / zinc-800=서브카드로 쓰고 있어서
+     같은 계층 관계를 유지하며 디자인 시스템 팔레트로 치환 */
+  --color-zinc-950: #12100E; /* 페이지 배경 */
+  --color-zinc-900: #1C1816; /* 카드/서피스 */
+  --color-zinc-800: #231E1B; /* 서브카드/hover */
+  --color-zinc-700: #2E2723; /* 보더 */
+  --color-zinc-600: #3D3530; /* 보더 hover / 희미한 라벨 */
+  --color-zinc-500: #5C524A; /* 텍스트 dim */
+  --color-zinc-400: #A89E95; /* 텍스트 secondary */
+  --color-zinc-300: #C9BFB5;
+  --color-zinc-200: #E3DBD0;
+  --color-zinc-100: #F5F0EB; /* 텍스트 primary */
+  --color-zinc-50:  #FAF7F3;
+
+  /* ── 포인트 컬러 팔레트 리매핑 (tailwind 유틸 호환) ── */
+  /* 전부 lemon(=primary) / coral(=secondary) 로 단색화.
+     emerald/green = positive(lemon), yellow/orange = 예측(coral),
+     red = 진짜 에러만 유지 */
+
+  /* lemon (primary) – blue-*, emerald-*, green-*, amber-*, cyan-*, indigo-* 대체 */
+  --color-lemon-50:  #FEF6D8;
+  --color-lemon-100: #FDEAA6;
+  --color-lemon-200: #FBDB73;
+  --color-lemon-300: #F8CA3F;
+  --color-lemon-400: #F0B90B; /* brand */
+  --color-lemon-500: #D4A30A;
+  --color-lemon-600: #A88208;
+  --color-lemon-700: #7A5F06;
+  --color-lemon-800: #4D3C04;
+
+  /* coral (secondary) – yellow-*, orange-*, purple-*, violet-*, rose-*, pink-* 대체 */
+  --color-coral-50:  #F9E2DE;
+  --color-coral-100: #F2BDB5;
+  --color-coral-200: #E79A8E;
+  --color-coral-300: #DD8173;
+  --color-coral-400: #CD6B5E; /* brand */
+  --color-coral-500: #B85A4E;
+  --color-coral-600: #96483E;
+  --color-coral-700: #6F352D;
+  --color-coral-800: #4A231E;
+
+  /* ── Tailwind 의미색 리매핑 ──
+     blue/emerald → lemon (primary) · yellow/orange → coral (secondary) · red 유지 */
+  --color-blue-300: #FBDB73;
+  --color-blue-400: #F0B90B;
+  --color-blue-500: #F0B90B;
+  --color-blue-600: #D4A30A;
+  --color-blue-700: #A88208;
+
+  --color-emerald-300: #FBDB73;
+  --color-emerald-400: #F0B90B;
+  --color-emerald-500: #F0B90B;
+  --color-emerald-600: #D4A30A;
+
+  --color-green-300: #FBDB73;
+  --color-green-400: #F0B90B;
+  --color-green-500: #F0B90B;
+
+  --color-yellow-300: #E79A8E;
+  --color-yellow-400: #CD6B5E;
+  --color-yellow-500: #CD6B5E;
+
+  --color-orange-300: #E79A8E;
+  --color-orange-400: #CD6B5E;
+  --color-orange-500: #CD6B5E;
+
+  --color-amber-300: #FBDB73;
+  --color-amber-400: #F0B90B;
+  --color-amber-500: #D4A30A;
+
+  /* 보라/violet 계열도 코랄로 흡수 */
+  --color-violet-400: #CD6B5E;
+  --color-violet-500: #B85A4E;
+  --color-purple-400: #CD6B5E;
+  --color-purple-500: #B85A4E;
+  --color-indigo-400: #B85A4E;
+  --color-indigo-500: #96483E;
+  --color-cyan-400: #A89E95;
+  --color-cyan-500: #7A5F06;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* ── 라운딩 베이스 (8px) ── */
+  --radius: 0.5rem;
+
+  /* ── 페이지/카드 (웜톤 다크) ── */
+  --background: #12100E;
+  --foreground: #F5F0EB;
+  --card: #1C1816;
+  --card-foreground: #F5F0EB;
+  --popover: #1C1816;
+  --popover-foreground: #F5F0EB;
+
+  /* ── 포인트 컬러 ── */
+  --primary: #F0B90B;
+  --primary-foreground: #12100E;
+  --secondary: #CD6B5E;
+  --secondary-foreground: #F5F0EB;
+
+  /* ── 중간톤 (hover / 서브 서피스) ── */
+  --muted: #231E1B;
+  --muted-foreground: #A89E95;
+  --accent: #231E1B;
+  --accent-foreground: #F5F0EB;
+
+  /* ── 보더/인풋/링 ── */
+  --border: #2E2723;
+  --input: #2E2723;
+  --ring: #F0B90B;
+
+  /* ── 상태 ── */
+  --destructive: #EF4444;
+
+  /* ── 차트 팔레트 (단색 – lemon 스케일 + coral + 웜 그레이) ── */
+  --chart-1: #F0B90B; /* lemon 400 – 주력 */
+  --chart-2: #CD6B5E; /* coral 400 – 보조 */
+  --chart-3: #D4A30A; /* lemon 500 */
+  --chart-4: #A89E95; /* 웜 그레이 */
+  --chart-5: #7A5F06; /* lemon 700 – 가장 어두운 */
+
+  /* ── Sidebar ── */
+  --sidebar: #12100E;
+  --sidebar-foreground: #F5F0EB;
+  --sidebar-primary: #F0B90B;
+  --sidebar-primary-foreground: #12100E;
+  --sidebar-accent: #231E1B;
+  --sidebar-accent-foreground: #F5F0EB;
+  --sidebar-border: #2E2723;
+  --sidebar-ring: #F0B90B;
 }
 
+/* 디자인 시스템은 dark-only. light/dark 동일값 유지 */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #12100E;
+  --foreground: #F5F0EB;
+  --card: #1C1816;
+  --card-foreground: #F5F0EB;
+  --popover: #1C1816;
+  --popover-foreground: #F5F0EB;
+  --primary: #F0B90B;
+  --primary-foreground: #12100E;
+  --secondary: #CD6B5E;
+  --secondary-foreground: #F5F0EB;
+  --muted: #231E1B;
+  --muted-foreground: #A89E95;
+  --accent: #231E1B;
+  --accent-foreground: #F5F0EB;
+  --border: #2E2723;
+  --input: #2E2723;
+  --ring: #F0B90B;
+  --destructive: #EF4444;
+  --chart-1: #F0B90B;
+  --chart-2: #CD6B5E;
+  --chart-3: #D4A30A;
+  --chart-4: #A89E95;
+  --chart-5: #7A5F06;
+  --sidebar: #12100E;
+  --sidebar-foreground: #F5F0EB;
+  --sidebar-primary: #F0B90B;
+  --sidebar-primary-foreground: #12100E;
+  --sidebar-accent: #231E1B;
+  --sidebar-accent-foreground: #F5F0EB;
+  --sidebar-border: #2E2723;
+  --sidebar-ring: #F0B90B;
 }
 
 @layer base {
@@ -122,8 +243,32 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
   }
   html {
-    @apply font-sans;
+    font-family: var(--font-sans);
+  }
+
+  /* 제목/라벨/탭에만 픽셀 폰트 (숫자 가독성 보호를 위해 숫자는 제외) */
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+}
+
+@layer utilities {
+  /* 디자인 시스템 accent dim 유틸 – 보더/배경 hover 시 */
+  .bg-primary-dim {
+    background-color: rgba(240, 185, 11, 0.12);
+  }
+  .bg-secondary-dim {
+    background-color: rgba(205, 107, 94, 0.12);
+  }
+  .border-primary-dim {
+    border-color: rgba(240, 185, 11, 0.4);
+  }
+  .border-secondary-dim {
+    border-color: rgba(205, 107, 94, 0.4);
   }
 }

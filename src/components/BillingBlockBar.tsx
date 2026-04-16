@@ -41,8 +41,8 @@ export function BillingBlockBar({ blocks, exchangeRate }: Props) {
   if (blocks.length === 0) {
     return (
       <div className="flex flex-col gap-1">
-        <div className="text-xs text-zinc-400 mb-1">청구 블록 (5시간 롤링 윈도우)</div>
-        <div className="text-xs text-zinc-500 py-4 text-center">사용 기록이 없습니다</div>
+        <div className="text-xs font-semibold text-foreground mb-1">청구 블록 (5시간 롤링 윈도우)</div>
+        <div className="text-xs text-muted-foreground py-4 text-center">사용 기록이 없습니다</div>
       </div>
     );
   }
@@ -52,10 +52,10 @@ export function BillingBlockBar({ blocks, exchangeRate }: Props) {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-xs text-zinc-400 mb-1">
+      <div className="text-xs font-semibold text-foreground mb-1">
         청구 블록 (5시간 롤링 윈도우 · 최근 5개)
         {!hasActive && (
-          <span className="ml-2 text-zinc-600">현재 활성 블록 없음 (5시간 이상 미사용)</span>
+          <span className="ml-2 text-muted-foreground font-normal">현재 활성 블록 없음 (5시간 이상 미사용)</span>
         )}
       </div>
       <div className="flex gap-2 items-end h-16">
@@ -63,16 +63,14 @@ export function BillingBlockBar({ blocks, exchangeRate }: Props) {
           const heightPct = Math.max((block.usage.totalCost / maxCost) * 100, 2);
           return (
             <div key={block.blockIndex} className="flex-1 flex flex-col items-center gap-1">
-              <div className="text-xs text-zinc-400">
+              <div className="text-xs text-muted-foreground">
                 {formatCost(block.usage.totalCost)}{' '}
-                <span className="text-zinc-600">{formatKRW(block.usage.totalCost, exchangeRate)}</span>
+                <span className="text-muted-foreground/60">{formatKRW(block.usage.totalCost, exchangeRate)}</span>
               </div>
               <div className="w-full relative" style={{ height: 40 }}>
                 <div
                   className={`absolute bottom-0 w-full rounded-t transition-all ${
-                    block.isActive
-                      ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]'
-                      : 'bg-zinc-700'
+                    block.isActive ? 'bg-primary' : 'bg-muted border border-border'
                   }`}
                   style={{ height: `${heightPct}%` }}
                 />
@@ -84,14 +82,14 @@ export function BillingBlockBar({ blocks, exchangeRate }: Props) {
       <div className="flex gap-2">
         {blocks.map((block) => (
           <div key={block.blockIndex} className="flex-1 text-center">
-            <div className={`text-xs ${block.isActive ? 'text-emerald-400 font-semibold' : 'text-zinc-500'}`}>
+            <div className={`text-xs ${block.isActive ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
               {fmtKst(block.startTime)}–{fmtKst(block.endTime)} KST
             </div>
-            <div className="text-xs text-zinc-600">
+            <div className="text-xs text-muted-foreground/60">
               {fmtKstDate(block.startTime)} · {fmtUtc(block.startTime)}–{fmtUtc(block.endTime)} UTC
             </div>
-            <div className="text-xs text-zinc-600">{fmt(block.usage.totalTokens)} 토큰</div>
-            <div className="text-xs text-zinc-700">{block.promptCount}개 프롬프트</div>
+            <div className="text-xs text-muted-foreground/60">{fmt(block.usage.totalTokens)} 토큰</div>
+            <div className="text-xs text-muted-foreground/50">{block.promptCount}개 프롬프트</div>
           </div>
         ))}
       </div>

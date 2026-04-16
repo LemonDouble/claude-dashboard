@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { DailyUsage } from '@/types';
 import { formatDate, formatCost } from '@/lib/format';
 import { useUnitMode } from '@/lib/unitMode';
+import { DS, modelColor } from '@/lib/chartPalette';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 import {
@@ -19,17 +20,6 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-
-const MODEL_COLORS: Record<string, string> = {
-  'claude-opus-4-7': '#fbbf24',
-  'claude-opus-4': '#f59e0b',
-  'claude-sonnet-4': '#3b82f6',
-  'claude-3-5-sonnet': '#6366f1',
-  'claude-3-5-haiku': '#10b981',
-  'claude-3-haiku': '#22d3ee',
-  'claude-3-opus': '#f97316',
-};
-const DEFAULT_COLOR = '#8b5cf6';
 
 interface Props {
   data: DailyUsage[];
@@ -73,10 +63,10 @@ export function DailyChart({ data, mode }: Props) {
       if (!active || !payload?.length) return null;
       const d = payload[0]?.payload;
       return (
-        <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs">
-          <div className="font-semibold text-white mb-1">{label}</div>
-          <div className="text-blue-400">누적 {formatCost(d.cumCost)}</div>
-          <div className="text-zinc-400">{isHourly ? '해당 시간' : '당일'} +{formatCost(d.delta)}</div>
+        <div className="bg-card border border-border rounded-md p-2 text-xs">
+          <div className="font-semibold text-foreground mb-1">{label}</div>
+          <div className="text-primary">누적 {formatCost(d.cumCost)}</div>
+          <div className="text-muted-foreground">{isHourly ? '해당 시간' : '당일'} +{formatCost(d.delta)}</div>
         </div>
       );
     };
@@ -88,7 +78,11 @@ export function DailyChart({ data, mode }: Props) {
             <button
               key={g}
               onClick={() => setGranularity(g)}
-              className={`text-xs px-2 py-0.5 rounded transition-colors ${granularity === g ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`text-xs font-medium px-2 py-0.5 rounded-md transition-colors ${
+                granularity === g
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
             >
               {g === 'daily' ? '일별' : '시간별'}
             </button>
@@ -99,23 +93,23 @@ export function DailyChart({ data, mode }: Props) {
             <AreaChart data={cumData} margin={{ top: 4, right: 8, bottom: 0, left: 4 }}>
               <defs>
                 <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  <stop offset="5%" stopColor={DS.lemon} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={DS.lemon} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} width={48}
+              <XAxis dataKey="label" tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={48}
                 tickFormatter={(v) => v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(1)}`} />
               <Tooltip content={<CumTooltip />} />
               {peak && (
                 <ReferenceLine
                   x={peak.label}
-                  stroke="#f59e0b"
+                  stroke={DS.coral}
                   strokeDasharray="3 3"
-                  label={{ value: `최고 +${formatCost(peak.delta)}`, fill: '#f59e0b', fontSize: 9, position: 'top' }}
+                  label={{ value: `최고 +${formatCost(peak.delta)}`, fill: DS.coral, fontSize: 9, position: 'top' }}
                 />
               )}
-              <Area type="monotone" dataKey="cumCost" stroke="#3b82f6" fill="url(#cumGrad)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="cumCost" stroke={DS.lemon} fill="url(#cumGrad)" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -141,15 +135,15 @@ export function DailyChart({ data, mode }: Props) {
     if (!active || !payload?.length) return null;
     const total = payload.reduce((s: number, p: any) => s + (p.value as number), 0);
     return (
-      <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs">
-        <div className="font-semibold text-white mb-1">{label}</div>
+      <div className="bg-card border border-border rounded-md p-2 text-xs">
+        <div className="font-semibold text-foreground mb-1">{label}</div>
         {payload.map((p: any) => (
           <div key={p.dataKey} className="flex justify-between gap-3" style={{ color: p.fill }}>
             <span>{p.dataKey}</span>
             <span>{mode === 'cost' ? formatCost(p.value) : fmt(p.value)}</span>
           </div>
         ))}
-        <div className="border-t border-zinc-600 mt-1 pt-1 text-white">
+        <div className="border-t border-border mt-1 pt-1 text-foreground">
           합계: {mode === 'cost' ? formatCost(total) : fmt(total)}
         </div>
       </div>
@@ -159,14 +153,14 @@ export function DailyChart({ data, mode }: Props) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-        <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-        <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} width={40}
+        <XAxis dataKey="date" tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <YAxis tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={40}
           tickFormatter={(v) => mode === 'cost' ? `$${v.toFixed(2)}` : fmt(v)} />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-        <Legend wrapperStyle={{ fontSize: 10, color: '#a1a1aa' }}
-          formatter={(value) => <span style={{ color: MODEL_COLORS[value] || DEFAULT_COLOR }}>{value}</span>} />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(240, 185, 11, 0.06)' }} />
+        <Legend wrapperStyle={{ fontSize: 10, color: DS.warmGray }}
+          formatter={(value) => <span style={{ color: modelColor(value) }}>{value}</span>} />
         {modelFamilies.map((m) => (
-          <Bar key={m} dataKey={m} stackId="a" fill={MODEL_COLORS[m] || DEFAULT_COLOR} />
+          <Bar key={m} dataKey={m} stackId="a" fill={modelColor(m)} />
         ))}
       </BarChart>
     </ResponsiveContainer>

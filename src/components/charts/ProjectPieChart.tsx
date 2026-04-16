@@ -1,9 +1,8 @@
 'use client';
 
 import { formatCost } from '@/lib/format';
+import { seriesColor } from '@/lib/chartPalette';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-
-const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f97316', '#06b6d4', '#ec4899', '#a3e635'];
 
 export interface ProjectUsage {
   projectName: string;
@@ -21,10 +20,10 @@ export function ProjectPieChart({ data }: Props) {
     if (!active || !payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="bg-zinc-800 border border-zinc-700 rounded p-2 text-xs">
-        <div className="font-semibold text-white truncate max-w-[160px]">{p.name}</div>
-        <div className="text-white">{formatCost(p.payload.totalCost)}</div>
-        <div className="text-zinc-400">{p.value.toFixed(1)}%</div>
+      <div className="bg-card border border-border rounded-md p-2 text-xs">
+        <div className="font-semibold text-foreground truncate max-w-[160px]">{p.name}</div>
+        <div className="text-foreground">{formatCost(p.payload.totalCost)}</div>
+        <div className="text-muted-foreground">{p.value.toFixed(1)}%</div>
       </div>
     );
   };
@@ -43,7 +42,7 @@ export function ProjectPieChart({ data }: Props) {
           paddingAngle={2}
         >
           {data.map((_, i) => (
-            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+            <Cell key={i} fill={seriesColor(i)} />
           ))}
         </Pie>
         <Tooltip content={<CustomTooltip />} />
