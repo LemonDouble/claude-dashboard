@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import readline from 'readline';
-import { TokenUsage, DailyUsage, SessionUsage, BillingBlock, BurnRate, Projection, UsageSummary, ModelUsage, CacheStats, HourlyPattern, DayOfWeekPattern } from '@/types';
+import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage } from '@/types';
 
 // Claude pricing per million tokens (USD)
 // 순서 중요: 더 구체적인 패턴을 먼저 배치
@@ -374,9 +374,6 @@ export async function getUsageSummary(): Promise<UsageSummary> {
   const thisMonth = monthlyMap.get(thisMonthStr) || emptyUsage();
   const allTime = records.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
 
-  // Billing blocks (5h UTC windows)
-  const billingBlocks = getBillingBlocks(records, now);
-
   // Burn rate (last 2 hours)
   const burnRate = getBurnRate(records, now);
 
@@ -391,64 +388,9 @@ export async function getUsageSummary(): Promise<UsageSummary> {
     monthly: Array.from(monthlyMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, usage]) => ({ month, ...usage })),
-    billingBlocks,
     burnRate,
     projections,
   };
-}
-
-function getBillingBlocks(records: ParsedRecord[], now: Date): BillingBlock[] {
-  // Anthropic 5시간 롤링 윈도우:
-  //   - 첫 메시지 시각을 "시간 단위로 버림"해서 블록 시작 (UTC 기준)
-  //   - 블록 종료 = 시작 + 5시간
-  //   - 현재 블록 종료 이후의 첫 메시지가 새 블록 시작
-  //   - 또는 마지막 메시지 이후 5시간 이상 공백이 있으면 새 블록 시작
-  const BLOCK_MS = 5 * 3600_000;
-
-  if (records.length === 0) return [];
-
-  // records는 getAllRecords()에서 이미 timestamp 오름차순 정렬됨
-  interface Bucket { start: Date; end: Date; records: ParsedRecord[]; }
-  const buckets: Bucket[] = [];
-
-  for (const r of records) {
-    const last = buckets[buckets.length - 1];
-    const lastTs = last?.records[last.records.length - 1].timestamp;
-    const startNewBlock =
-      !last ||
-      r.timestamp.getTime() >= last.end.getTime() ||
-      (lastTs && r.timestamp.getTime() - lastTs.getTime() >= BLOCK_MS);
-
-    if (startNewBlock) {
-      // 시간 단위로 버림 (UTC)
-      const start = new Date(Date.UTC(
-        r.timestamp.getUTCFullYear(),
-        r.timestamp.getUTCMonth(),
-        r.timestamp.getUTCDate(),
-        r.timestamp.getUTCHours(),
-      ));
-      buckets.push({ start, end: new Date(start.getTime() + BLOCK_MS), records: [r] });
-    } else {
-      last!.records.push(r);
-    }
-  }
-
-  // 최근 5개만 (최신이 오른쪽에 오도록 그대로 둠)
-  const recent = buckets.slice(-5);
-
-  return recent.map((b, i) => {
-    const usage = b.records.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
-    const isActive = now.getTime() >= b.start.getTime() && now.getTime() < b.end.getTime();
-    return {
-      blockIndex: i,
-      startTime: b.start.toISOString(),
-      endTime: b.end.toISOString(),
-      usage,
-      promptCount: b.records.length,
-      isActive,
-      label: `${b.start.toISOString().slice(11, 16)}–${b.end.toISOString().slice(11, 16)} UTC`,
-    };
-  });
 }
 
 function getBurnRate(records: ParsedRecord[], now: Date): BurnRate {
@@ -535,44 +477,6 @@ export async function getModelUsage(): Promise<ModelUsage[]> {
   });
 }
 
-export async function getCacheStats(): Promise<CacheStats> {
-  const records = await getAllRecords();
-  return memoByVersion('cacheStats', () => {
-    let totalSaved = 0;
-    const dailyMap = new Map<string, { saved: number; cacheRead: number; input: number }>();
-
-    for (const r of records) {
-      const p = getPricing(r.model);
-      const savedForRecord = (r.usage.cacheReadTokens * (p.input - p.cacheRead)) / 1_000_000;
-      totalSaved += savedForRecord;
-
-      const dateStr = toLocalDateStr(r.timestamp);
-      const entry = dailyMap.get(dateStr) || { saved: 0, cacheRead: 0, input: 0 };
-      entry.saved += savedForRecord;
-      entry.cacheRead += r.usage.cacheReadTokens;
-      entry.input += r.usage.inputTokens;
-      dailyMap.set(dateStr, entry);
-    }
-
-    const totalCacheRead = records.reduce((s, r) => s + r.usage.cacheReadTokens, 0);
-    const totalInput = records.reduce((s, r) => s + r.usage.inputTokens, 0);
-    const efficiency = totalInput + totalCacheRead > 0
-      ? (totalCacheRead / (totalInput + totalCacheRead)) * 100
-      : 0;
-
-    const dailyStats = Array.from(dailyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30)
-      .map(([date, { saved, cacheRead, input }]) => ({
-        date,
-        efficiency: cacheRead + input > 0 ? (cacheRead / (cacheRead + input)) * 100 : 0,
-        saved,
-      }));
-
-    return { totalSaved, efficiency, daily: dailyStats };
-  });
-}
-
 export async function getSessions(): Promise<import('@/types').SessionUsage[]> {
   const records = await getAllRecords();
   return memoByVersion('sessions', () => {
@@ -597,58 +501,6 @@ export async function getSessions(): Promise<import('@/types').SessionUsage[]> {
         ...usage,
       }))
       .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
-  });
-}
-
-export async function getPatterns(): Promise<{ hourly: HourlyPattern[]; dayOfWeek: DayOfWeekPattern[] }> {
-  const records = await getAllRecords();
-  return memoByVersion('patterns', () => {
-    const hourlyMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
-    const dowMap = new Map<number, { cost: number; tokens: number; sessions: Set<string>; count: number }>();
-
-    for (const r of records) {
-      const hour = r.timestamp.getHours(); // local
-      const dow = r.timestamp.getDay();
-
-      const h = hourlyMap.get(hour) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
-      h.cost += r.usage.totalCost;
-      h.tokens += r.usage.totalTokens;
-      h.sessions.add(r.sessionId);
-      h.count++;
-      hourlyMap.set(hour, h);
-
-      const d = dowMap.get(dow) || { cost: 0, tokens: 0, sessions: new Set(), count: 0 };
-      d.cost += r.usage.totalCost;
-      d.tokens += r.usage.totalTokens;
-      d.sessions.add(r.sessionId);
-      d.count++;
-      dowMap.set(dow, d);
-    }
-
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    const hourly: HourlyPattern[] = Array.from({ length: 24 }, (_, hour) => {
-      const e = hourlyMap.get(hour);
-      return {
-        hour,
-        avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
-        avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
-        sessionCount: e ? e.sessions.size : 0,
-      };
-    });
-
-    const dayOfWeek: DayOfWeekPattern[] = Array.from({ length: 7 }, (_, i) => {
-      const e = dowMap.get(i);
-      return {
-        day: days[i],
-        dayIndex: i,
-        avgCost: e ? e.cost / Math.max(e.count, 1) : 0,
-        avgTokens: e ? e.tokens / Math.max(e.count, 1) : 0,
-        sessionCount: e ? e.sessions.size : 0,
-      };
-    });
-
-    return { hourly, dayOfWeek };
   });
 }
 

@@ -22,16 +22,6 @@ export interface MonthlyUsage extends TokenUsage {
   month: string; // YYYY-MM
 }
 
-export interface BillingBlock {
-  blockIndex: number;
-  startTime: string; // ISO 8601
-  endTime: string;   // ISO 8601 (startTime + 5h)
-  usage: TokenUsage;
-  promptCount: number; // API 호출 횟수 (메시지 수)
-  isActive: boolean;  // true면 now가 이 블록 윈도우 내에 있음
-  label: string;
-}
-
 export interface BurnRate {
   tokensPerHour: number;
   costPerHour: number;
@@ -54,7 +44,6 @@ export interface UsageSummary {
   allTime: TokenUsage;
   daily: DailyUsage[];
   monthly: MonthlyUsage[];
-  billingBlocks: BillingBlock[];
   burnRate: BurnRate;
   projections: Projection[];
 }
@@ -66,28 +55,14 @@ export interface ModelUsage {
   percentage: number;
 }
 
-export interface CacheStats {
-  totalSaved: number; // USD saved by caching
-  efficiency: number; // percentage
-  daily: { date: string; efficiency: number; saved: number }[];
+export interface RateLimitWindow {
+  utilization: number; // 0-100
+  resetsAt: string | null; // ISO 8601
 }
 
-export interface HourlyPattern {
-  hour: number;
-  avgCost: number;
-  avgTokens: number;
-  sessionCount: number;
-}
-
-export interface DayOfWeekPattern {
-  day: string;
-  dayIndex: number;
-  avgCost: number;
-  avgTokens: number;
-  sessionCount: number;
-}
-
-export interface PatternsData {
-  hourly: HourlyPattern[];
-  dayOfWeek: DayOfWeekPattern[];
+export interface RateLimits {
+  fiveHour: RateLimitWindow | null;
+  sevenDay: RateLimitWindow | null;
+  sevenDaySonnet: RateLimitWindow | null;
+  error?: string;
 }

@@ -3,7 +3,7 @@
 import { ModelUsage } from '@/types';
 import { formatCost } from '@/lib/format';
 import { modelColor } from '@/lib/chartPalette';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface Props {
   data: ModelUsage[];
@@ -40,11 +40,6 @@ export function ModelPieChart({ data }: Props) {
           ))}
         </Pie>
         <Tooltip content={<CustomTooltip />} />
-        <Legend
-          formatter={(value) => (
-            <span style={{ color: modelColor(value), fontSize: 11 }}>{value}</span>
-          )}
-        />
       </PieChart>
     </ResponsiveContainer>
   );

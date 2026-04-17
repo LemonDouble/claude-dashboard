@@ -9,6 +9,7 @@ export interface ProjectUsage {
   totalCost: number;
   percentage: number;
   sessionCount?: number;
+  color?: string;
 }
 
 interface Props {
@@ -41,8 +42,8 @@ export function ProjectPieChart({ data }: Props) {
           outerRadius="70%"
           paddingAngle={2}
         >
-          {data.map((_, i) => (
-            <Cell key={i} fill={seriesColor(i)} />
+          {data.map((d, i) => (
+            <Cell key={i} fill={d.color ?? seriesColor(i)} />
           ))}
         </Pie>
         <Tooltip content={<CustomTooltip />} />
