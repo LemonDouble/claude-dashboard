@@ -38,6 +38,13 @@ export interface Projection {
   isProjected: boolean;
 }
 
+export interface UnknownModelUsage {
+  model: string;
+  records: number;
+  /** FALLBACK_PRICING(Sonnet 단가) 기준 추정치 */
+  estimatedCost: number;
+}
+
 export interface UsageSummary {
   today: TokenUsage;
   thisMonth: TokenUsage;
@@ -46,6 +53,8 @@ export interface UsageSummary {
   monthly: MonthlyUsage[];
   burnRate: BurnRate;
   projections: Projection[];
+  /** 단가 미등록 모델 목록 — 비어 있지 않으면 UI에서 경고 배너 표시 */
+  unknownModels: UnknownModelUsage[];
 }
 
 export interface ModelUsage {

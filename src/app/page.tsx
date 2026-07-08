@@ -181,6 +181,21 @@ function DashboardInner() {
         </div>
       </header>
 
+      {/* 단가 미등록 모델 경고 배너 */}
+      {data.unknownModels && data.unknownModels.length > 0 && (
+        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b border-primary/40 bg-primary/10 text-xs">
+          <span aria-hidden>⚠️</span>
+          <span className="text-foreground">
+            <span className="font-semibold">단가 미등록 모델 감지:</span>{' '}
+            {data.unknownModels
+              .map((u) => `${u.model} (${u.records.toLocaleString()}건, 추정 ${formatCost(u.estimatedCost)})`)
+              .join(', ')}
+            {' '}— 기본(Sonnet) 단가로 추정 계산 중입니다.{' '}
+            <code className="font-mono text-foreground/80">src/lib/parser.ts</code>의 PRICING에 단가를 추가하세요.
+          </span>
+        </div>
+      )}
+
       {/* Main content: 2구획 세로 분할 */}
       <main className="flex-1 overflow-hidden p-3 grid grid-rows-[auto_1fr] gap-3">
         {/* ── 상단: 사용 한도 ── */}

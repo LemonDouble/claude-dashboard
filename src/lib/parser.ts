@@ -2,12 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import readline from 'readline';
-import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage } from '@/types';
+import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage, UnknownModelUsage } from '@/types';
 
 // Claude pricing per million tokens (USD)
 // 순서 중요: 더 구체적인 패턴을 먼저 배치
 // cacheCreate = 5분 캐시 쓰기 요금 기준
-const PRICING: Record<string, { input: number; output: number; cacheCreate: number; cacheRead: number }> = {
+type ModelPricing = { input: number; output: number; cacheCreate: number; cacheRead: number };
+
+const PRICING: Record<string, ModelPricing> = {
   // Claude 5 계열
   'fable-5':          { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Fable 5
   'mythos-5':         { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Mythos 5 (Fable 5와 동일 단가)
@@ -32,14 +34,27 @@ const PRICING: Record<string, { input: number; output: number; cacheCreate: numb
   'claude-3-sonnet':  { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 3
 };
 
-function getPricing(model: string): { input: number; output: number; cacheCreate: number; cacheRead: number } {
-  const DEFAULT = { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 };
-  if (!model) return DEFAULT;
+// Claude Code가 모델 별칭 문자열로 남긴 레코드 — 전체 문자열이 정확히 일치할 때만 적용.
+// 부분 문자열 매칭에 넣으면 미래의 신모델(예: claude-sonnet-6)까지 삼켜버려 미등록 감지가 무력화됨.
+const ALIAS_PRICING: Record<string, ModelPricing> = {
+  'fable':  PRICING['fable-5'],
+  'opus':   PRICING['opus-4-8'],
+  'sonnet': PRICING['sonnet-5'],
+  'haiku':  PRICING['haiku-4-5'],
+};
+
+// 미등록 모델의 추정 계산용 폴백 단가 (Sonnet 기준)
+const FALLBACK_PRICING: ModelPricing = { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 };
+
+// 미등록 모델이면 null 반환 — 호출부에서 FALLBACK_PRICING으로 추정하되 unknownPricing으로 표시
+function getPricing(model: string): ModelPricing | null {
+  if (!model) return null;
   const lower = model.toLowerCase();
+  if (ALIAS_PRICING[lower]) return ALIAS_PRICING[lower];
   for (const [key, pricing] of Object.entries(PRICING)) {
     if (lower.includes(key)) return pricing;
   }
-  return DEFAULT;
+  return null;
 }
 
 function getModelFamily(model: string): string {
@@ -69,15 +84,16 @@ function getModelFamily(model: string): string {
   return model;
 }
 
-function calculateCost(usage: { input: number; output: number; cacheCreate: number; cacheRead: number }, model: string): number {
-  const p = getPricing(model);
-  return (
+function calculateCost(usage: { input: number; output: number; cacheCreate: number; cacheRead: number }, model: string): { cost: number; unknownPricing: boolean } {
+  const known = getPricing(model);
+  const p = known ?? FALLBACK_PRICING;
+  const cost =
     (usage.input * p.input +
       usage.output * p.output +
       usage.cacheCreate * p.cacheCreate +
       usage.cacheRead * p.cacheRead) /
-    1_000_000
-  );
+    1_000_000;
+  return { cost, unknownPricing: known === null };
 }
 
 function emptyUsage(): TokenUsage {
@@ -118,6 +134,8 @@ interface ParsedRecord {
   usage: TokenUsage;
   sessionId: string;
   projectName: string;
+  /** 단가 미등록 모델 — totalCost는 FALLBACK_PRICING 기준 추정치 */
+  unknownPricing?: boolean;
 }
 
 export function getClaudePath(): string {
@@ -186,7 +204,8 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
       const cacheRead = u.cache_read_input_tokens || 0;
       // claudelytics/ccusage와 동일하게 항상 토큰으로 재계산
       // costUSD는 모델 정보 없이 계산 불가한 경우에만 폴백으로 사용
-      let cost = calculateCost({ input, output, cacheCreate, cacheRead }, model);
+      const calc = calculateCost({ input, output, cacheCreate, cacheRead }, model);
+      let cost = calc.cost;
       if (cost === 0 && raw.costUSD) cost = raw.costUSD;
 
       records.push({
@@ -203,6 +222,7 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
         },
         sessionId,
         projectName,
+        ...(calc.unknownPricing ? { unknownPricing: true } : {}),
       });
     } catch {}
   }
@@ -229,7 +249,7 @@ let _inflight: Promise<ParsedRecord[]> | null = null;
 const CACHE_DIR = process.env.CACHE_DIR || path.join(os.tmpdir(), 'claude-dashboard-cache');
 const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
 // 단가 테이블 변경 시 bump — 캐시된 totalCost/family가 옛 단가로 남는 것을 방지
-const DISK_CACHE_VERSION = 2;
+const DISK_CACHE_VERSION = 3;
 
 function loadDiskCache(): void {
   try {
@@ -391,6 +411,19 @@ export async function getUsageSummary(): Promise<UsageSummary> {
   // Projections (30 days forward from today)
   const projections = getProjections(daily, now);
 
+  // 단가 미등록 모델 집계 — UI 경고 배너용
+  const unknownMap = new Map<string, { records: number; estimatedCost: number }>();
+  for (const r of records) {
+    if (!r.unknownPricing) continue;
+    const e = unknownMap.get(r.model) ?? { records: 0, estimatedCost: 0 };
+    e.records++;
+    e.estimatedCost += r.usage.totalCost;
+    unknownMap.set(r.model, e);
+  }
+  const unknownModels: UnknownModelUsage[] = Array.from(unknownMap.entries())
+    .map(([model, v]) => ({ model, ...v }))
+    .sort((a, b) => b.estimatedCost - a.estimatedCost);
+
   return {
     today,
     thisMonth,
@@ -401,6 +434,7 @@ export async function getUsageSummary(): Promise<UsageSummary> {
       .map(([month, usage]) => ({ month, ...usage })),
     burnRate,
     projections,
+    unknownModels,
   };
 }
 
