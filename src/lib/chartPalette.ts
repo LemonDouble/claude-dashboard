@@ -43,13 +43,18 @@ export const SERIES_COLORS = [
   DS.warmGrayDark,
 ] as const;
 
-/** 모델명 → 색 매핑 (기본은 lemon, 구버전/sonnet/haiku는 coral/gray 톤) */
+/** 모델명 → 색 매핑 (현세대는 기본 톤, 구버전은 어두운 톤, sonnet/haiku는 coral/gray) */
 export const MODEL_COLORS: Record<string, string> = {
-  'claude-opus-4-7': DS.lemon,
-  'claude-opus-4-6': DS.lemonDark,
+  'claude-fable-5': DS.lemon,
+  'claude-mythos-5': DS.lemonLight,
+  'claude-opus-4-8': DS.lemonDark,
+  'claude-opus-4-7': DS.lemonDarker,
+  'claude-opus-4-6': DS.lemonDarker,
   'claude-opus-4': DS.lemonDarker,
-  'claude-sonnet-4-6': DS.coral,
+  'claude-sonnet-5': DS.coral,
+  'claude-sonnet-4-6': DS.coralDark,
   'claude-sonnet-4': DS.coralDark,
+  'claude-haiku-4-5': DS.warmGray,
   'claude-3-5-sonnet': DS.coralLight,
   'claude-3-5-haiku': DS.warmGray,
   'claude-3-haiku': DS.warmGrayDark,

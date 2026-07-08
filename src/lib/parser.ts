@@ -8,7 +8,12 @@ import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummar
 // 순서 중요: 더 구체적인 패턴을 먼저 배치
 // cacheCreate = 5분 캐시 쓰기 요금 기준
 const PRICING: Record<string, { input: number; output: number; cacheCreate: number; cacheRead: number }> = {
+  // Claude 5 계열
+  'fable-5':          { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Fable 5
+  'mythos-5':         { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Mythos 5 (Fable 5와 동일 단가)
+  'sonnet-5':         { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 5
   // Claude Opus 4.x 계열
+  'opus-4-8':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.8
   'opus-4-7':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.7
   'opus-4-6':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.6
   'opus-4-5':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.5
@@ -40,7 +45,12 @@ function getPricing(model: string): { input: number; output: number; cacheCreate
 function getModelFamily(model: string): string {
   if (!model) return 'unknown';
   const lower = model.toLowerCase();
+  // Claude 5 계열
+  if (lower.includes('fable-5'))   return 'claude-fable-5';
+  if (lower.includes('mythos-5'))  return 'claude-mythos-5';
+  if (lower.includes('sonnet-5'))  return 'claude-sonnet-5';
   // Claude Opus 4.x (구체적 버전 먼저)
+  if (lower.includes('opus-4-8'))  return 'claude-opus-4-8';
   if (lower.includes('opus-4-7'))  return 'claude-opus-4-7';
   if (lower.includes('opus-4-6'))  return 'claude-opus-4-6';
   if (lower.includes('opus-4-5'))  return 'claude-opus-4-5';
@@ -218,7 +228,8 @@ let _inflight: Promise<ParsedRecord[]> | null = null;
 
 const CACHE_DIR = process.env.CACHE_DIR || path.join(os.tmpdir(), 'claude-dashboard-cache');
 const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
-const DISK_CACHE_VERSION = 1;
+// 단가 테이블 변경 시 bump — 캐시된 totalCost/family가 옛 단가로 남는 것을 방지
+const DISK_CACHE_VERSION = 2;
 
 function loadDiskCache(): void {
   try {
