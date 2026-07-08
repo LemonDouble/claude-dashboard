@@ -1,5 +1,6 @@
 FROM node:24-alpine AS base
-RUN npm install -g pnpm
+# pnpm 메이저 버전 고정 — 미고정 시 pnpm 11+가 설치되어 package.json의 pnpm 설정(onlyBuiltDependencies)을 무시함
+RUN npm install -g pnpm@10
 
 # deps
 FROM base AS deps
