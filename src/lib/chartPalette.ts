@@ -28,37 +28,54 @@ export const DS = {
 } as const;
 
 /**
- * 여러 시리즈에 순서대로 배정할 단색 팔레트.
- * 사용자가 "전부 레몬 옐로우로" 요청하여 레몬 스케일을 우선 배치 후 코랄/그레이 보조.
+ * 차트 카테고리 팔레트 — 다크 서피스(#1C1816) 기준 검증 완료.
+ * 기존 레몬/코랄 명도 단계 팔레트는 인접 시리즈 구분이 안 되어 교체 (2026-07).
+ *
+ * 8개 상이한 hue, 고정 순서. 순서 자체가 색약(CVD) 안전 장치이므로 임의로 바꾸지 말 것.
+ * 검증(dataviz validate_palette.js): 인접쌍 CVD ΔE ≥ 8.4 / 일반 시야 ΔE ≥ 19.8 / 대비 전부 ≥ 3:1.
+ * 슬롯 1 골드는 브랜드 레몬(#F0B90B)을 다크 밝기 밴드(L ≤ 0.67)에 맞게 스냅한 값.
+ */
+export const CHART = {
+  gold: '#C98500',
+  aqua: '#199E70',
+  orange: '#D95926',
+  violet: '#9085E9',
+  coral: '#CD6B5E',
+  blue: '#3987E5',
+  green: '#008300',
+  magenta: '#D55181',
+} as const;
+
+/**
+ * 여러 시리즈에 순서대로 배정할 팔레트 (검증된 고정 순서 — 재배열 금지).
+ * 8개 초과 시리즈는 색을 순환시키지 말고 '기타'로 접을 것.
  */
 export const SERIES_COLORS = [
-  DS.lemon,
-  DS.coral,
-  DS.lemonDark,
-  DS.coralDark,
-  DS.lemonLight,
-  DS.coralLight,
-  DS.warmGray,
-  DS.lemonDarker,
-  DS.warmGrayDark,
+  CHART.gold,
+  CHART.aqua,
+  CHART.orange,
+  CHART.violet,
+  CHART.coral,
+  CHART.blue,
+  CHART.green,
+  CHART.magenta,
 ] as const;
 
-/** 모델명 → 색 매핑 (현세대는 기본 톤, 구버전은 어두운 톤, sonnet/haiku는 coral/gray) */
+/**
+ * 모델명 → 색 매핑 (엔티티 고정 — 시리즈 수가 바뀌어도 색이 따라가지 않도록).
+ * 상시 공존하는 현세대 4종(fable/opus-4.8/sonnet-5/haiku)은 all-pairs 검증을 통과한
+ * gold/blue/magenta/green 4색 조합에 배정. 구세대는 잔여 슬롯, 3.x는 기본 그레이.
+ */
 export const MODEL_COLORS: Record<string, string> = {
-  'claude-fable-5': DS.lemon,
-  'claude-mythos-5': DS.lemonLight,
-  'claude-opus-4-8': DS.lemonDark,
-  'claude-opus-4-7': DS.lemonDarker,
-  'claude-opus-4-6': DS.lemonDarker,
-  'claude-opus-4': DS.lemonDarker,
-  'claude-sonnet-5': DS.coral,
-  'claude-sonnet-4-6': DS.coralDark,
-  'claude-sonnet-4': DS.coralDark,
-  'claude-haiku-4-5': DS.warmGray,
-  'claude-3-5-sonnet': DS.coralLight,
-  'claude-3-5-haiku': DS.warmGray,
-  'claude-3-haiku': DS.warmGrayDark,
-  'claude-3-opus': DS.lemonLight,
+  'claude-fable-5': CHART.gold,
+  'claude-opus-4-8': CHART.blue,
+  'claude-sonnet-5': CHART.magenta,
+  'claude-haiku-4-5': CHART.green,
+  'claude-mythos-5': CHART.violet,
+  'claude-opus-4-7': CHART.violet,
+  'claude-opus-4-6': CHART.aqua,
+  'claude-sonnet-4-6': CHART.orange,
+  'claude-sonnet-4': CHART.coral,
 };
 
 export const DEFAULT_MODEL_COLOR = DS.warmGray;

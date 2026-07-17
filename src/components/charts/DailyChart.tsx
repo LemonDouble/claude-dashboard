@@ -138,8 +138,11 @@ export function DailyChart({ data, mode }: Props) {
       <div className="bg-card border border-border rounded-md p-2 text-xs">
         <div className="font-semibold text-foreground mb-1">{label}</div>
         {payload.map((p: any) => (
-          <div key={p.dataKey} className="flex justify-between gap-3" style={{ color: p.fill }}>
-            <span>{p.dataKey}</span>
+          <div key={p.dataKey} className="flex items-center justify-between gap-3 text-foreground/85">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-[2px] shrink-0" style={{ background: p.fill }} />
+              {p.dataKey}
+            </span>
             <span>{mode === 'cost' ? formatCost(p.value) : fmt(p.value)}</span>
           </div>
         ))}
@@ -157,10 +160,10 @@ export function DailyChart({ data, mode }: Props) {
         <YAxis tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={40}
           tickFormatter={(v) => mode === 'cost' ? `$${v.toFixed(2)}` : fmt(v)} />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(240, 185, 11, 0.06)' }} />
-        <Legend wrapperStyle={{ fontSize: 10, color: DS.warmGray }}
-          formatter={(value) => <span style={{ color: modelColor(value) }}>{value}</span>} />
+        <Legend wrapperStyle={{ fontSize: 10 }}
+          formatter={(value) => <span style={{ color: DS.warmGray }}>{value}</span>} />
         {modelFamilies.map((m) => (
-          <Bar key={m} dataKey={m} stackId="a" fill={modelColor(m)} />
+          <Bar key={m} dataKey={m} stackId="a" fill={modelColor(m)} stroke={DS.warmGraySurface} strokeWidth={1} />
         ))}
       </BarChart>
     </ResponsiveContainer>

@@ -15,7 +15,10 @@ export function ModelPieChart({ data }: Props) {
     const p = payload[0];
     return (
       <div className="bg-card border border-border rounded-md p-2 text-xs">
-        <div className="font-semibold" style={{ color: p.payload.fill }}>{p.name}</div>
+        <div className="font-semibold text-foreground flex items-center gap-1.5">
+          <span className="inline-block w-2 h-2 rounded-[2px] shrink-0" style={{ background: p.payload.fill }} />
+          {p.name}
+        </div>
         <div className="text-foreground">{formatCost(p.payload.usage.totalCost)}</div>
         <div className="text-muted-foreground">{p.value.toFixed(1)}%</div>
       </div>

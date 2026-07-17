@@ -183,8 +183,9 @@ function DashboardInner() {
     }
     const sorted = Array.from(costMap.entries()).sort(([, a], [, b]) => b - a);
     const grandTotal = sorted.reduce((a, [, c]) => a + c, 0) || 1;
-    const top = sorted.slice(0, 10);
-    const rest = sorted.slice(10);
+    // SERIES_COLORS는 검증된 8색 고정 — 순환 배정하지 않고 초과분은 '기타'로 접음
+    const top = sorted.slice(0, 8);
+    const rest = sorted.slice(8);
     const items: ProjectUsage[] = top.map(([projectName, totalCost], i) => ({
       projectName,
       totalCost,
@@ -352,7 +353,7 @@ function DashboardInner() {
                 <div className="flex items-baseline gap-2 shrink-0 mb-2">
                   <span className="text-xs font-semibold text-foreground">프로젝트별 사용 분포</span>
                   <span className="text-xs text-muted-foreground/70">
-                    상위 10개 · {formatCost(projectData.reduce((s, p) => s + p.totalCost, 0))}
+                    상위 8개 · {formatCost(projectData.reduce((s, p) => s + p.totalCost, 0))}
                   </span>
                 </div>
                 <div className="flex gap-2 flex-1 min-h-0">
