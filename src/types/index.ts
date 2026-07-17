@@ -38,6 +38,15 @@ export interface Projection {
   isProjected: boolean;
 }
 
+export type Granularity = 'hour' | 'day' | 'week' | 'month';
+export type BucketPeriod = '24h' | '7d' | '30d' | '90d' | 'all';
+
+export interface BucketUsage extends TokenUsage {
+  /** hour: "YYYY-MM-DD HH" · day/week(월요일 시작): "YYYY-MM-DD" · month: "YYYY-MM" */
+  bucket: string;
+  modelBreakdown: Record<string, TokenUsage>;
+}
+
 export interface UnknownModelUsage {
   model: string;
   records: number;

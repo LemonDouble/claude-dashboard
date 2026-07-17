@@ -11,7 +11,7 @@ import { useSubscriptionCost } from '@/lib/useSubscriptionCost';
 import { UnitModeProvider, useUnitMode } from '@/lib/unitMode';
 import { KpiCard } from '@/components/KpiCard';
 import { RateLimitWidgets } from '@/components/RateLimitWidgets';
-import { DailyChart } from '@/components/charts/DailyChart';
+import { UsageTrendChart } from '@/components/charts/UsageTrendChart';
 import { ModelPieChart } from '@/components/charts/ModelPieChart';
 import { ProjectPieChart, ProjectUsage } from '@/components/charts/ProjectPieChart';
 
@@ -295,7 +295,7 @@ function DashboardInner() {
             {/* 왼쪽: 일별 차트 */}
             <div className="bg-card border border-border rounded-xl p-3 flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <span className="text-xs font-semibold text-foreground">일별 사용량 (최근 30일)</span>
+                <span className="text-xs font-semibold text-foreground">사용량 추세</span>
                 <div className="flex gap-1">
                   {(['cost', 'tokens', 'cumulative'] as const).map((m) => (
                     <button
@@ -313,7 +313,7 @@ function DashboardInner() {
                 </div>
               </div>
               <div className="flex-1 min-h-0">
-                <DailyChart data={data.daily} mode={chartMode} />
+                <UsageTrendChart mode={chartMode} />
               </div>
             </div>
 

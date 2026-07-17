@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import readline from 'readline';
-import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage, UnknownModelUsage } from '@/types';
+import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage, UnknownModelUsage, Granularity, BucketPeriod, BucketUsage } from '@/types';
+import { PERIOD_HOURS } from '@/lib/buckets';
 
 // Claude pricing per million tokens (USD)
 // 순서 중요: 더 구체적인 패턴을 먼저 배치
@@ -607,20 +608,60 @@ export async function getSessions(): Promise<import('@/types').SessionUsage[]> {
   });
 }
 
-export async function getHourlyCosts(): Promise<{ datetime: string; cost: number }[]> {
+// ── 기간/집계 단위 기반 버킷 집계 ──────────────────────────────────────
+
+function startOfBucket(d: Date, g: Granularity): Date {
+  switch (g) {
+    case 'hour':  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours());
+    case 'day':   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    case 'week':  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)); // 월요일 시작
+    case 'month': return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+}
+
+function nextBucketStart(d: Date, g: Granularity): Date {
+  switch (g) {
+    case 'hour':  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1);
+    case 'day':   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    case 'week':  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+    case 'month': return new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  }
+}
+
+function bucketKey(d: Date, g: Granularity): string {
+  const s = startOfBucket(d, g);
+  if (g === 'month') return toLocalMonthStr(s);
+  if (g === 'hour') return `${toLocalDateStr(s)} ${String(s.getHours()).padStart(2, '0')}`;
+  return toLocalDateStr(s);
+}
+
+/** 기간 내 사용량을 granularity 단위 버킷으로 집계. 사용량 없는 구간도 0으로 채워 시간축을 연속으로 유지 */
+export async function getBucketedUsage(granularity: Granularity, period: BucketPeriod): Promise<BucketUsage[]> {
   const records = await getAllRecords();
-  return memoByVersion('hourlyCosts', () => {
-    const map = new Map<string, number>();
+  const now = new Date();
+  const rawStart = period === 'all'
+    ? (records[0]?.timestamp ?? now)
+    : new Date(now.getTime() - PERIOD_HOURS[period] * 3600_000);
+  const start = startOfBucket(rawStart, granularity);
 
-    for (const r of records) {
-      // key: "YYYY-MM-DD HH" in local time
-      const d = r.timestamp;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}`;
-      map.set(key, (map.get(key) ?? 0) + r.usage.totalCost);
-    }
+  const map = new Map<string, { usage: TokenUsage; models: Map<string, TokenUsage> }>();
+  for (let t = start; t <= now; t = nextBucketStart(t, granularity)) {
+    map.set(bucketKey(t, granularity), { usage: emptyUsage(), models: new Map() });
+  }
 
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([datetime, cost]) => ({ datetime, cost }));
-  });
+  for (const r of records) {
+    if (r.timestamp < start) continue;
+    const entry = map.get(bucketKey(r.timestamp, granularity));
+    if (!entry) continue; // 미래 타임스탬프 등 방어
+    entry.usage = addUsage(entry.usage, r.usage);
+    entry.models.set(r.family, addUsage(entry.models.get(r.family) || emptyUsage(), r.usage));
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([bucket, { usage, models }]) => ({
+      bucket,
+      ...usage,
+      modelBreakdown: Object.fromEntries(models.entries()),
+    }));
 }
