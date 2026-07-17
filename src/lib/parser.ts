@@ -114,6 +114,7 @@ function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
 interface RawRecord {
   type?: string;
   timestamp?: string;
+  cwd?: string;
   message?: {
     usage?: {
       input_tokens?: number;
@@ -133,9 +134,48 @@ interface ParsedRecord {
   family: string;
   usage: TokenUsage;
   sessionId: string;
+  /** 세션의 실제 작업 디렉토리(레코드 cwd 기준). cwd가 없으면 디렉토리명 기반 폴백 */
+  projectPath: string;
+  /** 표시용 프로젝트명 — 병합 시점에 projectPath 충돌을 고려해 재계산됨 */
   projectName: string;
   /** 단가 미등록 모델 — totalCost는 FALLBACK_PRICING 기준 추정치 */
   unknownPricing?: boolean;
+}
+
+/** 경로의 마지막 depth개 세그먼트를 표시명으로 사용 (예: depth 2 → 'archived/claude-dashboard') */
+function nameAtDepth(p: string, depth: number): string {
+  const parts = p.split('/').filter(Boolean);
+  if (parts.length === 0) return p || 'unknown';
+  return parts.slice(-depth).join('/');
+}
+
+/**
+ * projectPath 목록 → 표시명 맵.
+ * 기본은 basename, 서로 다른 경로끼리 이름이 겹치면 겹치는 것들만 부모 디렉토리를 붙여가며 구분.
+ * (예: .../hayakoe vs .../archived/hayakoe → 'claude-projects/hayakoe' / 'archived/hayakoe')
+ */
+function resolveProjectNames(paths: Iterable<string>): Map<string, string> {
+  const unique = Array.from(new Set(paths));
+  const depth = new Map<string, number>(unique.map((p) => [p, 1]));
+  for (;;) {
+    const groups = new Map<string, string[]>();
+    for (const p of unique) {
+      const n = nameAtDepth(p, depth.get(p)!);
+      const g = groups.get(n);
+      if (g) g.push(p); else groups.set(n, [p]);
+    }
+    let changed = false;
+    for (const ps of groups.values()) {
+      if (ps.length <= 1) continue;
+      for (const p of ps) {
+        const maxDepth = p.split('/').filter(Boolean).length;
+        const d = depth.get(p)!;
+        if (d < maxDepth) { depth.set(p, d + 1); changed = true; }
+      }
+    }
+    if (!changed) break;
+  }
+  return new Map(unique.map((p) => [p, nameAtDepth(p, depth.get(p)!)]));
 }
 
 export function getClaudePath(): string {
@@ -166,7 +206,8 @@ function extractSessionInfo(filePath: string, claudePath: string): { sessionId: 
   const relative = path.relative(projectsPath, filePath);
   const parts = relative.split(path.sep);
   const rawName = parts[0] || 'unknown';
-  const sessionId = parts[parts.length - 2] || parts[parts.length - 1] || 'unknown';
+  // Claude Code는 세션 ID를 파일명으로 사용 (<uuid>.jsonl)
+  const sessionId = path.basename(filePath, '.jsonl') || 'unknown';
 
   // Claude Code names project dirs by replacing '/' with '-' in the full path.
   // Strip the home directory prefix (e.g. '-home-lemon-') to get a readable name.
@@ -181,14 +222,16 @@ function extractSessionInfo(filePath: string, claudePath: string): { sessionId: 
 }
 
 async function parseFile(filePath: string, claudePath: string): Promise<ParsedRecord[]> {
-  const { sessionId, projectName } = extractSessionInfo(filePath, claudePath);
+  const { sessionId, projectName: fallbackName } = extractSessionInfo(filePath, claudePath);
   const records: ParsedRecord[] = [];
+  let cwd: string | null = null;
 
   const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
   for await (const line of rl) {
     if (!line.trim()) continue;
     try {
       const raw: RawRecord = JSON.parse(line);
+      if (!cwd && typeof raw.cwd === 'string' && raw.cwd) cwd = raw.cwd;
       if (!raw.timestamp || !raw.message?.usage) continue;
 
       const ts = new Date(raw.timestamp);
@@ -221,10 +264,20 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
           totalCost: cost,
         },
         sessionId,
-        projectName,
+        projectPath: '', // 파일 전체를 읽은 뒤 아래에서 일괄 확정
+        projectName: '',
         ...(calc.unknownPricing ? { unknownPricing: true } : {}),
       });
     } catch {}
+  }
+
+  // cwd가 있으면 실제 경로 사용, 없으면 디렉토리명 기반 폴백.
+  // 표시명(projectName)은 병합 시점에 전체 projectPath를 보고 재계산되므로 여기선 잠정값만.
+  const projectPath = cwd ?? fallbackName;
+  const provisionalName = nameAtDepth(projectPath, 1);
+  for (const r of records) {
+    r.projectPath = projectPath;
+    r.projectName = provisionalName;
   }
   return records;
 }
@@ -248,8 +301,8 @@ let _inflight: Promise<ParsedRecord[]> | null = null;
 
 const CACHE_DIR = process.env.CACHE_DIR || path.join(os.tmpdir(), 'claude-dashboard-cache');
 const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
-// 단가 테이블 변경 시 bump — 캐시된 totalCost/family가 옛 단가로 남는 것을 방지
-const DISK_CACHE_VERSION = 3;
+// 단가 테이블/레코드 스키마 변경 시 bump — 캐시된 totalCost/family/projectPath가 구버전으로 남는 것을 방지
+const DISK_CACHE_VERSION = 4;
 
 function loadDiskCache(): void {
   try {
@@ -324,6 +377,11 @@ async function doGetAllRecords(): Promise<ParsedRecord[]> {
   const merged: ParsedRecord[] = [];
   for (const e of _fileCache.values()) merged.push(...e.records);
   merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  // 표시명 확정 — 전체 projectPath를 보고 basename 충돌 시에만 부모 디렉토리를 붙여 구분
+  const nameMap = resolveProjectNames(merged.map((r) => r.projectPath));
+  for (const r of merged) r.projectName = nameMap.get(r.projectPath)!;
+
   _mergedCache = merged;
   _recordsVersion++;
 
