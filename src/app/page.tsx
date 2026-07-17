@@ -7,6 +7,7 @@ import { UsageSummary, ModelUsage, SessionUsage } from '@/types';
 import { formatCost, formatKRW } from '@/lib/format';
 import { modelColor, seriesColor, DS } from '@/lib/chartPalette';
 import { useExchangeRate } from '@/lib/useExchangeRate';
+import { useSubscriptionCost } from '@/lib/useSubscriptionCost';
 import { UnitModeProvider, useUnitMode } from '@/lib/unitMode';
 import { KpiCard } from '@/components/KpiCard';
 import { RateLimitWidgets } from '@/components/RateLimitWidgets';
@@ -76,6 +77,54 @@ function ExchangeRateSetting({ rate, onUpdate }: { rate: number; onUpdate: (r: n
   );
 }
 
+function SubscriptionCostSetting({ cost, onUpdate }: { cost: number; onUpdate: (c: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setInput(String(cost));
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const commit = () => {
+    const parsed = parseInt(input, 10);
+    if (!isNaN(parsed) && parsed > 0) onUpdate(parsed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-muted-foreground text-xs">$</span>
+        <input
+          ref={inputRef}
+          type="number"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+          className="w-16 bg-muted border border-border rounded-md px-1.5 py-0.5 text-xs text-foreground text-right font-mono focus:outline-none focus:border-primary"
+          autoFocus
+        />
+        <span className="text-muted-foreground text-xs">/월</span>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={startEdit}
+      className="text-foreground/80 hover:text-foreground text-xs px-1.5 py-0.5 rounded-md hover:bg-muted transition-colors"
+      title="구독료 설정"
+    >
+      <span className="opacity-60">구독 </span>
+      ${cost.toLocaleString('en-US')}/월
+    </button>
+  );
+}
+
 export default function Dashboard() {
   return (
     <UnitModeProvider>
@@ -87,6 +136,7 @@ export default function Dashboard() {
 function DashboardInner() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const { rate: exchangeRate, updateRate } = useExchangeRate();
+  const { cost: subscriptionCost, updateCost: updateSubscriptionCost } = useSubscriptionCost();
   const { mode: unitMode, toggle: toggleUnit, fmt } = useUnitMode();
   const { data, isLoading, error } = useSWR<UsageSummary>(
     '/api/usage',
@@ -172,6 +222,8 @@ function DashboardInner() {
           </button>
           <span className="text-foreground/25 text-xs select-none">|</span>
           <ExchangeRateSetting rate={exchangeRate} onUpdate={updateRate} />
+          <span className="text-foreground/25 text-xs select-none">|</span>
+          <SubscriptionCostSetting cost={subscriptionCost} onUpdate={updateSubscriptionCost} />
           {lastUpdated && (
             <>
               <span className="text-foreground/25 text-xs select-none">|</span>
@@ -205,7 +257,7 @@ function DashboardInner() {
 
         {/* ── 하단: 비용 & 추세 ── */}
         <section className="grid grid-rows-[auto_1fr] gap-3 min-h-0">
-          <div className="grid grid-cols-3 gap-2 shrink-0">
+          <div className="grid grid-cols-4 gap-2 shrink-0">
             <KpiCard
               title="오늘 비용"
               value={formatCost(data.today.totalCost)}
@@ -225,6 +277,16 @@ function DashboardInner() {
               value={formatCost(data.allTime.totalCost)}
               krw={formatKRW(data.allTime.totalCost, exchangeRate)}
               sub={`${fmt(data.allTime.totalTokens)} 토큰`}
+            />
+            <KpiCard
+              title="구독 가치 (이번 달)"
+              value={`${(data.thisMonth.totalCost / subscriptionCost).toFixed(1)}배`}
+              sub={`월말 예상 ${(() => {
+                const now = new Date();
+                const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                return ((data.thisMonth.totalCost / subscriptionCost / now.getDate()) * daysInMonth).toFixed(1);
+              })()}배 · API 환산 기준`}
+              accent="secondary"
             />
           </div>
 
