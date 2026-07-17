@@ -14,7 +14,7 @@ const PRICING: Record<string, ModelPricing> = {
   // Claude 5 계열
   'fable-5':          { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Fable 5
   'mythos-5':         { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Mythos 5 (Fable 5와 동일 단가)
-  'sonnet-5':         { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 5
+  'sonnet-5':         { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 5 정가 — 프로모션 기간엔 SONNET5_INTRO_PRICING 적용
   // Claude Opus 4.x 계열
   'opus-4-8':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.8
   'opus-4-7':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.7
@@ -47,15 +47,23 @@ const ALIAS_PRICING: Record<string, ModelPricing> = {
 // 미등록 모델의 추정 계산용 폴백 단가 (Sonnet 기준)
 const FALLBACK_PRICING: ModelPricing = { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 };
 
+// Sonnet 5 출시 프로모션 단가 — 2026-08-31까지 실제 청구는 $2/$10 (정가 $3/$15).
+// 레코드 timestamp 기준으로 적용해 프로모션 종료 후에도 과거 기록이 올바르게 유지됨.
+const SONNET5_INTRO_PRICING: ModelPricing = { input: 2.0, output: 10.0, cacheCreate: 2.5, cacheRead: 0.2 };
+const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01 00:00 UTC 이전이면 프로모션 단가
+
 // 미등록 모델이면 null 반환 — 호출부에서 FALLBACK_PRICING으로 추정하되 unknownPricing으로 표시
-function getPricing(model: string): ModelPricing | null {
+function getPricing(model: string, ts?: Date): ModelPricing | null {
   if (!model) return null;
   const lower = model.toLowerCase();
-  if (ALIAS_PRICING[lower]) return ALIAS_PRICING[lower];
-  for (const [key, pricing] of Object.entries(PRICING)) {
-    if (lower.includes(key)) return pricing;
+  let p: ModelPricing | null = ALIAS_PRICING[lower] ?? null;
+  if (!p) {
+    for (const [key, pricing] of Object.entries(PRICING)) {
+      if (lower.includes(key)) { p = pricing; break; }
+    }
   }
-  return null;
+  if (p === PRICING['sonnet-5'] && ts && ts.getTime() < SONNET5_INTRO_END) return SONNET5_INTRO_PRICING;
+  return p;
 }
 
 function getModelFamily(model: string): string {
@@ -85,13 +93,15 @@ function getModelFamily(model: string): string {
   return model;
 }
 
-function calculateCost(usage: { input: number; output: number; cacheCreate: number; cacheRead: number }, model: string): { cost: number; unknownPricing: boolean } {
-  const known = getPricing(model);
+function calculateCost(usage: { input: number; output: number; cacheCreate5m: number; cacheCreate1h: number; cacheRead: number }, model: string, ts?: Date): { cost: number; unknownPricing: boolean } {
+  const known = getPricing(model, ts);
   const p = known ?? FALLBACK_PRICING;
+  // 1h TTL 캐시 쓰기는 단가표와 무관하게 input의 2배 (ccusage와 동일한 규칙)
   const cost =
     (usage.input * p.input +
       usage.output * p.output +
-      usage.cacheCreate * p.cacheCreate +
+      usage.cacheCreate5m * p.cacheCreate +
+      usage.cacheCreate1h * p.input * 2 +
       usage.cacheRead * p.cacheRead) /
     1_000_000;
   return { cost, unknownPricing: known === null };
@@ -116,12 +126,19 @@ interface RawRecord {
   type?: string;
   timestamp?: string;
   cwd?: string;
+  requestId?: string;
+  isSidechain?: boolean;
   message?: {
+    id?: string;
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
+      cache_creation?: {
+        ephemeral_5m_input_tokens?: number;
+        ephemeral_1h_input_tokens?: number;
+      };
     };
     model?: string;
     stop_reason?: string | null;
@@ -141,6 +158,11 @@ interface ParsedRecord {
   projectName: string;
   /** 단가 미등록 모델 — totalCost는 FALLBACK_PRICING 기준 추정치 */
   unknownPricing?: boolean;
+  /** dedup 키 — 한 API 응답이 content block 수만큼 여러 줄로 기록되므로 응답당 1회만 집계 */
+  messageId?: string;
+  requestId?: string;
+  /** 서브에이전트(sidechain) 레코드 — 부모 메시지가 새 requestId로 재기록될 수 있어 dedup 판단에 사용 */
+  isSidechain?: boolean;
 }
 
 /** 경로의 마지막 depth개 세그먼트를 표시명으로 사용 (예: depth 2 → 'archived/claude-dashboard') */
@@ -246,9 +268,12 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
       const output = u.output_tokens || 0;
       const cacheCreate = u.cache_creation_input_tokens || 0;
       const cacheRead = u.cache_read_input_tokens || 0;
+      // 캐시 쓰기는 5m/1h TTL 단가가 다르므로 breakdown이 있으면 분리, 없으면 전량 5m으로 간주
+      const cacheCreate1h = u.cache_creation?.ephemeral_1h_input_tokens || 0;
+      const cacheCreate5m = u.cache_creation ? (u.cache_creation.ephemeral_5m_input_tokens || 0) : cacheCreate;
       // claudelytics/ccusage와 동일하게 항상 토큰으로 재계산
       // costUSD는 모델 정보 없이 계산 불가한 경우에만 폴백으로 사용
-      const calc = calculateCost({ input, output, cacheCreate, cacheRead }, model);
+      const calc = calculateCost({ input, output, cacheCreate5m, cacheCreate1h, cacheRead }, model, ts);
       let cost = calc.cost;
       if (cost === 0 && raw.costUSD) cost = raw.costUSD;
 
@@ -268,6 +293,9 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
         projectPath: '', // 파일 전체를 읽은 뒤 아래에서 일괄 확정
         projectName: '',
         ...(calc.unknownPricing ? { unknownPricing: true } : {}),
+        messageId: raw.message.id,
+        requestId: raw.requestId,
+        ...(raw.isSidechain ? { isSidechain: true } : {}),
       });
     } catch {}
   }
@@ -281,6 +309,46 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
     r.projectName = provisionalName;
   }
   return records;
+}
+
+// ── 응답 단위 dedup ────────────────────────────────────────────────────
+// Claude Code는 한 API 응답을 content block 수만큼 여러 JSONL 줄로 기록하고,
+// 줄마다 동일한 usage 객체가 복사된다. 과금은 응답당 1회이므로
+// (messageId, requestId) 기준으로 토큰 합계가 가장 큰 스냅샷 하나만 남긴다.
+// sidechain(서브에이전트) 로그는 부모 메시지를 새 requestId로 재기록할 수 있어
+// messageId 단독으로도 한 번 더 걸러낸다. — ccusage와 동일한 규칙
+
+function shouldReplaceDeduped(candidate: ParsedRecord, existing: ParsedRecord): boolean {
+  if (!!candidate.isSidechain !== !!existing.isSidechain) return !!existing.isSidechain; // 비-sidechain 우선
+  if (candidate.usage.totalTokens !== existing.usage.totalTokens) {
+    return candidate.usage.totalTokens > existing.usage.totalTokens;
+  }
+  return candidate.usage.totalCost > existing.usage.totalCost;
+}
+
+function dedupeRecords(records: ParsedRecord[]): ParsedRecord[] {
+  const out: ParsedRecord[] = [];
+  const byExact = new Map<string, number>();     // 'messageId:requestId' → out 인덱스
+  const byMessage = new Map<string, number[]>(); // messageId → out 인덱스들 (sidechain 재기록 대비)
+  for (const r of records) {
+    if (!r.messageId) { out.push(r); continue; }
+    const exactKey = `${r.messageId}:${r.requestId ?? ''}`;
+    let idx = byExact.get(exactKey);
+    if (idx === undefined) {
+      const candidates = byMessage.get(r.messageId);
+      if (candidates) idx = candidates.find((i) => r.isSidechain || out[i].isSidechain);
+    }
+    if (idx !== undefined) {
+      if (shouldReplaceDeduped(r, out[idx])) out[idx] = r;
+      continue;
+    }
+    const i = out.length;
+    out.push(r);
+    byExact.set(exactKey, i);
+    const list = byMessage.get(r.messageId);
+    if (list) list.push(i); else byMessage.set(r.messageId, [i]);
+  }
+  return out;
 }
 
 // ── 캐시 레이어 ────────────────────────────────────────────────────────
@@ -303,7 +371,9 @@ let _inflight: Promise<ParsedRecord[]> | null = null;
 const CACHE_DIR = process.env.CACHE_DIR || path.join(os.tmpdir(), 'claude-dashboard-cache');
 const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
 // 단가 테이블/레코드 스키마 변경 시 bump — 캐시된 totalCost/family/projectPath가 구버전으로 남는 것을 방지
-const DISK_CACHE_VERSION = 4;
+// v5: 응답 단위 dedup용 messageId/requestId/isSidechain 추가 + 1h 캐시 쓰기 단가 분리
+// v6: Sonnet 5 출시 프로모션 단가($2/$10, ~2026-08-31) 기간 조건부 적용
+const DISK_CACHE_VERSION = 6;
 
 function loadDiskCache(): void {
   try {
@@ -374,9 +444,10 @@ async function doGetAllRecords(): Promise<ParsedRecord[]> {
 
   if (!dirty && _mergedCache) return _mergedCache;
 
-  // 전체 목록 재구성
-  const merged: ParsedRecord[] = [];
-  for (const e of _fileCache.values()) merged.push(...e.records);
+  // 전체 목록 재구성 — 파일별 원본 레코드를 모은 뒤 응답 단위로 dedup
+  const all: ParsedRecord[] = [];
+  for (const e of _fileCache.values()) all.push(...e.records);
+  const merged = dedupeRecords(all);
   merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
   // 표시명 확정 — 전체 projectPath를 보고 basename 충돌 시에만 부모 디렉토리를 붙여 구분
