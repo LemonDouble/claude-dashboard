@@ -68,6 +68,7 @@ export const SERIES_COLORS = [
  */
 export const MODEL_COLORS: Record<string, string> = {
   'claude-fable-5': CHART.gold,
+  'claude-opus-5': CHART.coral, // 구세대 sonnet-4와 공유 — 공존 가능성 최저 (mythos/opus-4-7의 violet 공유와 같은 방식)
   'claude-opus-4-8': CHART.blue,
   'claude-sonnet-5': CHART.magenta,
   'claude-haiku-4-5': CHART.green,

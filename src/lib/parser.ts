@@ -14,6 +14,7 @@ const PRICING: Record<string, ModelPricing> = {
   // Claude 5 계열
   'fable-5':          { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Fable 5
   'mythos-5':         { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Mythos 5 (Fable 5와 동일 단가)
+  'opus-5':           { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 5 (Opus 4.8과 동일 단가)
   'sonnet-5':         { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 5 정가 — 프로모션 기간엔 SONNET5_INTRO_PRICING 적용
   // Claude Opus 4.x 계열
   'opus-4-8':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.8
@@ -39,7 +40,7 @@ const PRICING: Record<string, ModelPricing> = {
 // 부분 문자열 매칭에 넣으면 미래의 신모델(예: claude-sonnet-6)까지 삼켜버려 미등록 감지가 무력화됨.
 const ALIAS_PRICING: Record<string, ModelPricing> = {
   'fable':  PRICING['fable-5'],
-  'opus':   PRICING['opus-4-8'],
+  'opus':   PRICING['opus-5'],
   'sonnet': PRICING['sonnet-5'],
   'haiku':  PRICING['haiku-4-5'],
 };
@@ -72,6 +73,7 @@ function getModelFamily(model: string): string {
   // Claude 5 계열
   if (lower.includes('fable-5'))   return 'claude-fable-5';
   if (lower.includes('mythos-5'))  return 'claude-mythos-5';
+  if (lower.includes('opus-5'))    return 'claude-opus-5';
   if (lower.includes('sonnet-5'))  return 'claude-sonnet-5';
   // Claude Opus 4.x (구체적 버전 먼저)
   if (lower.includes('opus-4-8'))  return 'claude-opus-4-8';
@@ -373,7 +375,8 @@ const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
 // 단가 테이블/레코드 스키마 변경 시 bump — 캐시된 totalCost/family/projectPath가 구버전으로 남는 것을 방지
 // v5: 응답 단위 dedup용 messageId/requestId/isSidechain 추가 + 1h 캐시 쓰기 단가 분리
 // v6: Sonnet 5 출시 프로모션 단가($2/$10, ~2026-08-31) 기간 조건부 적용
-const DISK_CACHE_VERSION = 6;
+// v7: Opus 5 단가 추가 — 폴백 단가로 계산된 기존 opus-5 레코드 무효화
+const DISK_CACHE_VERSION = 7;
 
 function loadDiskCache(): void {
   try {
