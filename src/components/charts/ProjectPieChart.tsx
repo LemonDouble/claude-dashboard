@@ -2,7 +2,7 @@
 
 import { formatCost } from '@/lib/format';
 import { seriesColor } from '@/lib/chartPalette';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, TooltipContentProps } from 'recharts';
 
 export interface ProjectUsage {
   projectName: string;
@@ -17,14 +17,14 @@ interface Props {
 }
 
 export function ProjectPieChart({ data }: Props) {
-  const CustomTooltip = ({ active, payload }: any) => {
+  const renderTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null;
     const p = payload[0];
     return (
       <div className="bg-card border border-border rounded-md p-2 text-xs">
         <div className="font-semibold text-foreground truncate max-w-[160px]">{p.name}</div>
         <div className="text-foreground">{formatCost(p.payload.totalCost)}</div>
-        <div className="text-muted-foreground">{p.value.toFixed(1)}%</div>
+        <div className="text-muted-foreground">{Number(p.value).toFixed(1)}%</div>
       </div>
     );
   };
@@ -46,7 +46,7 @@ export function ProjectPieChart({ data }: Props) {
             <Cell key={i} fill={d.color ?? seriesColor(i)} />
           ))}
         </Pie>
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={renderTooltip} />
       </PieChart>
     </ResponsiveContainer>
   );

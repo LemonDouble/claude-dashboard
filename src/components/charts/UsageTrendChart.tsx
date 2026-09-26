@@ -24,6 +24,7 @@ import {
   ReferenceLine,
   AreaChart,
   Area,
+  TooltipContentProps,
 } from 'recharts';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -87,17 +88,15 @@ export function UsageTrendChart({ mode }: Props) {
 
   // ── 누적 모드 ──
   if (mode === 'cumulative') {
-    let running = 0;
-    const cumData = buckets.map((b) => ({
-      bucket: b.bucket,
-      cumCost: Number((running += b.totalCost).toFixed(4)),
-      delta: Number(b.totalCost.toFixed(4)),
-    }));
+    const cumData = buckets.reduce<{ bucket: string; cumCost: number; delta: number }[]>((points, bucket) => {
+      const cumCost = (points.at(-1)?.cumCost ?? 0) + bucket.totalCost;
+      return [...points, { bucket: bucket.bucket, cumCost, delta: bucket.totalCost }];
+    }, []);
     const peak = cumData.length
       ? cumData.reduce((best, d) => (d.delta > best.delta ? d : best), cumData[0])
       : null;
 
-    const CumTooltip = ({ active, payload, label }: any) => {
+    const renderCumulativeTooltip = ({ active, payload, label }: TooltipContentProps) => {
       if (!active || !payload?.length) return null;
       const d = payload[0]?.payload;
       return (
@@ -125,7 +124,7 @@ export function UsageTrendChart({ mode }: Props) {
                 interval="preserveStartEnd" tickFormatter={tickLabel} />
               <YAxis tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={48}
                 tickFormatter={(v) => v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(1)}`} />
-              <Tooltip content={<CumTooltip />} />
+              <Tooltip content={renderCumulativeTooltip} />
               {peak && (
                 <ReferenceLine
                   x={peak.bucket}
@@ -156,19 +155,19 @@ export function UsageTrendChart({ mode }: Props) {
     return point;
   });
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const renderTooltip = ({ active, payload, label }: TooltipContentProps) => {
     if (!active || !payload?.length) return null;
-    const total = payload.reduce((s: number, p: any) => s + (p.value as number), 0);
+    const total = payload.reduce((sum, entry) => sum + Number(entry.value), 0);
     return (
       <div className="bg-card border border-border rounded-md p-2 text-xs">
         <div className="font-semibold text-foreground mb-1">{label}</div>
-        {payload.map((p: any) => (
-          <div key={p.dataKey} className="flex items-center justify-between gap-3 text-foreground/85">
+        {payload.map((p) => (
+          <div key={p.name} className="flex items-center justify-between gap-3 text-foreground/85">
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-[2px] shrink-0" style={{ background: p.fill }} />
-              {p.dataKey}
+              {p.name}
             </span>
-            <span>{mode === 'cost' ? formatCost(p.value) : fmt(p.value)}</span>
+            <span>{mode === 'cost' ? formatCost(Number(p.value)) : fmt(Number(p.value))}</span>
           </div>
         ))}
         <div className="border-t border-border mt-1 pt-1 text-foreground">
@@ -188,7 +187,7 @@ export function UsageTrendChart({ mode }: Props) {
               interval="preserveStartEnd" tickFormatter={tickLabel} />
             <YAxis tick={{ fill: DS.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={40}
               tickFormatter={(v) => mode === 'cost' ? `$${v.toFixed(2)}` : fmt(v)} />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(240, 185, 11, 0.06)' }} />
+            <Tooltip content={renderTooltip} cursor={{ fill: 'rgba(240, 185, 11, 0.06)' }} />
             <Legend wrapperStyle={{ fontSize: 10 }}
               formatter={(value) => <span style={{ color: DS.warmGray }}>{value}</span>} />
             {modelFamilies.map((m) => (

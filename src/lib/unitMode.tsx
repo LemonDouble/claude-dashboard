@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, ReactNode } from 'react';
+import { useStoredValue } from '@/lib/useStoredValue';
 
 export type UnitMode = 'kr' | 'en';
 
@@ -33,18 +34,9 @@ const UnitModeContext = createContext<UnitModeContextValue>({
 });
 
 export function UnitModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<UnitMode>('kr');
-
-  useEffect(() => {
-    const stored = localStorage.getItem(LS_KEY);
-    if (stored === 'kr' || stored === 'en') setMode(stored);
-  }, []);
-
-  const toggle = () => {
-    const next: UnitMode = mode === 'kr' ? 'en' : 'kr';
-    setMode(next);
-    localStorage.setItem(LS_KEY, next);
-  };
+  const [stored, setStored] = useStoredValue(LS_KEY, 'kr');
+  const mode: UnitMode = stored === 'en' ? 'en' : 'kr';
+  const toggle = () => setStored(mode === 'kr' ? 'en' : 'kr');
 
   return (
     <UnitModeContext.Provider value={{ mode, toggle, fmt: mode === 'kr' ? formatTokensKR : formatTokensEN }}>

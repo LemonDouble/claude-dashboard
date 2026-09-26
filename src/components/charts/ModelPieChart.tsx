@@ -3,14 +3,14 @@
 import { ModelUsage } from '@/types';
 import { formatCost } from '@/lib/format';
 import { modelColor } from '@/lib/chartPalette';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, TooltipContentProps } from 'recharts';
 
 interface Props {
   data: ModelUsage[];
 }
 
 export function ModelPieChart({ data }: Props) {
-  const CustomTooltip = ({ active, payload }: any) => {
+  const renderTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null;
     const p = payload[0];
     return (
@@ -20,7 +20,7 @@ export function ModelPieChart({ data }: Props) {
           {p.name}
         </div>
         <div className="text-foreground">{formatCost(p.payload.usage.totalCost)}</div>
-        <div className="text-muted-foreground">{p.value.toFixed(1)}%</div>
+        <div className="text-muted-foreground">{Number(p.value).toFixed(1)}%</div>
       </div>
     );
   };
@@ -42,7 +42,7 @@ export function ModelPieChart({ data }: Props) {
             <Cell key={entry.model} fill={modelColor(entry.model)} />
           ))}
         </Pie>
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={renderTooltip} />
       </PieChart>
     </ResponsiveContainer>
   );

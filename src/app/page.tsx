@@ -6,8 +6,7 @@ import Image from 'next/image';
 import { UsageSummary, ModelUsage, SessionUsage } from '@/types';
 import { formatCost, formatKRW } from '@/lib/format';
 import { modelColor, seriesColor, DS } from '@/lib/chartPalette';
-import { useExchangeRate } from '@/lib/useExchangeRate';
-import { useSubscriptionCost } from '@/lib/useSubscriptionCost';
+import { useStoredPositiveNumber } from '@/lib/useStoredValue';
 import { UnitModeProvider, useUnitMode } from '@/lib/unitMode';
 import { KpiCard } from '@/components/KpiCard';
 import { RateLimitWidgets } from '@/components/RateLimitWidgets';
@@ -135,8 +134,9 @@ export default function Dashboard() {
 
 function DashboardInner() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const { rate: exchangeRate, updateRate } = useExchangeRate();
-  const { cost: subscriptionCost, updateCost: updateSubscriptionCost } = useSubscriptionCost();
+  const [exchangeRate, updateRate] = useStoredPositiveNumber('claude-dashboard-exchange-rate', 1480);
+  // 기본값: Claude Max 20x 월 구독료 (USD)
+  const [subscriptionCost, updateSubscriptionCost] = useStoredPositiveNumber('claude-dashboard-subscription-usd', 200);
   const { mode: unitMode, toggle: toggleUnit, fmt } = useUnitMode();
   const { data, isLoading, error } = useSWR<UsageSummary>(
     '/api/usage',

@@ -96,4 +96,5 @@ CLAUDE_PATH=/path/to/.claude pnpm dev
 | 키 | 기본값 | 설명 |
 |----|--------|------|
 | `claude-dashboard-exchange-rate` | `1480` | USD→KRW 환율 |
+| `claude-dashboard-subscription-usd` | `200` | 월 구독료 (USD, 구독 가치 계산용) |
 | `claude-dashboard-unit-mode` | `kr` | 토큰 단위 (`kr`: 만/억, `en`: K/M) |
