@@ -55,7 +55,7 @@ CLAUDE_PATH=/path/to/.claude pnpm dev
 
 - **사용 한도 위젯**은 Anthropic OAuth API에서 가져온 실측 값입니다 `~/.claude/.credentials.json`에 OAuth 토큰을 이용해 가져오며, 해당 토큰이 없으면 안내 메시지가 표시됩니다.
 - 사용 한도 카드는 ~50% 기본색, ≥50% 보조색, ≥80% 경고색으로 바뀝니다. 한도 데이터가 없는 윈도우는 자동으로 숨겨집니다.
-- **프로젝트별 분포**는 비용 기준 상위 10개만 표시하고, 11번째부터는 "기타 (N개)"로 묶입니다.
+- **프로젝트별 분포**는 비용 기준 상위 8개만 표시하고, 9번째부터는 "기타 (N개)"로 묶입니다.
 - 프로젝트명에서 홈 디렉터리 prefix와 `CLAUDE_REPO_PREFIX`(기본 `repo-`)가 자동 제거됩니다.
 - **누적 차트**는 기울기가 가장 가파른 지점(최고 지출일)에 기준선이 표시됩니다.
 - 환율은 헤더에서 클릭 후 직접 입력(Enter 확정), 토큰 단위는 만/억 ↔ K/M 토글입니다.
@@ -73,17 +73,11 @@ CLAUDE_PATH=/path/to/.claude pnpm dev
       + cacheReadTokens × cacheRead단가) ÷ 1,000,000
 ```
 
-### 요금표 (USD / 백만 토큰)
+### 요금표
 
-| 모델 | Input | Output | Cache Write | Cache Read |
-|------|------:|-------:|------------:|-----------:|
-| Claude Opus 4.7 / 4.6 / 4.5 | $5 | $25 | $6.25 | $0.50 |
-| Claude Opus 4.1 / 4 | $15 | $75 | $18.75 | $1.50 |
-| Claude Sonnet 4.x / 3.7 / 3.5 | $3 | $15 | $3.75 | $0.30 |
-| Claude Haiku 4.5 | $1 | $5 | $1.25 | $0.10 |
-| Claude Haiku 3.5 | $0.80 | $4 | $1.00 | $0.08 |
-| Claude Haiku 3 | $0.25 | $1.25 | $0.3125 | $0.03 |
-| Claude Opus 3 | $15 | $75 | $18.75 | $1.50 |
+- 모델별 단가는 `src/lib/parser.ts`의 `PRICING`에 있습니다. 기준은 [공식 가격표](https://platform.claude.com/docs/en/about-claude/pricing)입니다.
+- 모델 ID는 날짜·`[1m]` 접미사를 떼어낸 뒤 **정확히 일치**하는 키로 조회합니다. 단가가 없는 모델은 Sonnet 단가로 추정하고, 상단에 경고 배너를 띄웁니다.
+- 1시간 TTL 캐시 쓰기는 모든 모델에서 input 단가의 2배로 계산합니다.
 
 ---
 

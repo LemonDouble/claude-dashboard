@@ -2,109 +2,89 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import readline from 'readline';
-import { TokenUsage, DailyUsage, SessionUsage, BurnRate, Projection, UsageSummary, ModelUsage, UnknownModelUsage, Granularity, BucketPeriod, BucketUsage } from '@/types';
+import { TokenUsage, SessionUsage, UsageSummary, ModelUsage, UnknownModelUsage, Granularity, BucketPeriod, BucketUsage } from '@/types';
 import { PERIOD_HOURS } from '@/lib/buckets';
 
-// Claude pricing per million tokens (USD)
-// 순서 중요: 더 구체적인 패턴을 먼저 배치
+// Claude pricing per million tokens (USD) — https://platform.claude.com/docs/en/about-claude/pricing
+// 키는 normalizeModelId 결과와 정확히 일치해야 함 (부분 매칭은 신모델을 구모델 단가로 삼켜버림)
 // cacheCreate = 5분 캐시 쓰기 요금 기준
 type ModelPricing = { input: number; output: number; cacheCreate: number; cacheRead: number };
 
-const PRICING: Record<string, ModelPricing> = {
-  // Claude 5 계열
-  'fable-5':          { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Fable 5
-  'mythos-5':         { input: 10.0, output: 50.0,  cacheCreate: 12.5,  cacheRead: 1.0  }, // Mythos 5 (Fable 5와 동일 단가)
-  'opus-5':           { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 5 (Opus 4.8과 동일 단가)
-  'sonnet-5':         { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 5 정가 — 프로모션 기간엔 SONNET5_INTRO_PRICING 적용
-  // Claude Opus 4.x 계열
-  'opus-4-8':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.8
-  'opus-4-7':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.7
-  'opus-4-6':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.6
-  'opus-4-5':         { input: 5.0,  output: 25.0,  cacheCreate: 6.25,  cacheRead: 0.5  }, // Opus 4.5
-  'opus-4-1':         { input: 15.0, output: 75.0,  cacheCreate: 18.75, cacheRead: 1.5  }, // Opus 4.1
-  'claude-opus-4':    { input: 15.0, output: 75.0,  cacheCreate: 18.75, cacheRead: 1.5  }, // Opus 4
-  // Claude Sonnet 4.x 계열
-  'claude-sonnet-4':  { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 4/4.5/4.6
-  // Claude Haiku 4.5 계열
-  'haiku-4-5':        { input: 1.0,  output: 5.0,   cacheCreate: 1.25,  cacheRead: 0.10 }, // Haiku 4.5
-  // Claude 3.x 계열 (구체적 → 일반 순)
-  'claude-3-7-sonnet':{ input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 3.7
-  'claude-3-5-sonnet':{ input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 3.5
-  'claude-3-5-haiku': { input: 0.8,  output: 4.0,   cacheCreate: 1.0,   cacheRead: 0.08 }, // Haiku 3.5
-  'claude-3-opus':    { input: 15.0, output: 75.0,  cacheCreate: 18.75, cacheRead: 1.5  }, // Opus 3
-  'claude-3-haiku':   { input: 0.25, output: 1.25,  cacheCreate: 0.3125, cacheRead: 0.03 }, // Haiku 3
-  'claude-3-sonnet':  { input: 3.0,  output: 15.0,  cacheCreate: 3.75,  cacheRead: 0.3  }, // Sonnet 3
-};
+const FABLE_5_1_TIER: ModelPricing = { input: 10.0, output: 50.0, cacheCreate: 12.5,  cacheRead: 0.25 };
+const FABLE_5_TIER: ModelPricing   = { input: 10.0, output: 50.0, cacheCreate: 12.5,  cacheRead: 1.0  };
+const OPUS_5_5_TIER: ModelPricing  = { input: 4.0,  output: 20.0, cacheCreate: 5.0,   cacheRead: 0.2  };
+const OPUS_TIER: ModelPricing      = { input: 5.0,  output: 25.0, cacheCreate: 6.25,  cacheRead: 0.5  };
+const OPUS_LEGACY_TIER: ModelPricing = { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 };
+const SONNET_5_TIER: ModelPricing  = { input: 2.0,  output: 10.0, cacheCreate: 2.5,   cacheRead: 0.2  };
+const SONNET_TIER: ModelPricing    = { input: 3.0,  output: 15.0, cacheCreate: 3.75,  cacheRead: 0.3  };
+const HAIKU_4_5_TIER: ModelPricing = { input: 1.0,  output: 5.0,  cacheCreate: 1.25,  cacheRead: 0.1  };
 
-// Claude Code가 모델 별칭 문자열로 남긴 레코드 — 전체 문자열이 정확히 일치할 때만 적용.
-// 부분 문자열 매칭에 넣으면 미래의 신모델(예: claude-sonnet-6)까지 삼켜버려 미등록 감지가 무력화됨.
-const ALIAS_PRICING: Record<string, ModelPricing> = {
-  'fable':  PRICING['fable-5'],
-  'opus':   PRICING['opus-5'],
-  'sonnet': PRICING['sonnet-5'],
-  'haiku':  PRICING['haiku-4-5'],
+const PRICING: Record<string, ModelPricing> = {
+  'fable-5-1':  FABLE_5_1_TIER,
+  'mythos-5-1': FABLE_5_1_TIER,
+  'fable-5':    FABLE_5_TIER,
+  'mythos-5':   FABLE_5_TIER,
+  'opus-5-5':   OPUS_5_5_TIER,
+  'opus-5':     OPUS_TIER,
+  'sonnet-5':   SONNET_5_TIER,
+  'opus-4-8':   OPUS_TIER,
+  'opus-4-7':   OPUS_TIER,
+  'opus-4-6':   OPUS_TIER,
+  'opus-4-5':   OPUS_TIER,
+  'opus-4-1':   OPUS_LEGACY_TIER,
+  'opus-4':     OPUS_LEGACY_TIER,
+  'sonnet-4-6': SONNET_TIER,
+  'sonnet-4-5': SONNET_TIER,
+  'sonnet-4':   SONNET_TIER,
+  'haiku-4-5':  HAIKU_4_5_TIER,
+  '3-7-sonnet': SONNET_TIER,
+  '3-5-sonnet': SONNET_TIER,
+  '3-5-haiku':  { input: 0.8,  output: 4.0,  cacheCreate: 1.0,    cacheRead: 0.08 },
+  '3-opus':     OPUS_LEGACY_TIER,
+  '3-haiku':    { input: 0.25, output: 1.25, cacheCreate: 0.3125, cacheRead: 0.03 },
+  '3-sonnet':   SONNET_TIER,
+  // Claude Code가 모델 별칭 문자열로 남긴 레코드
+  'fable':      FABLE_5_TIER,
+  'opus':       OPUS_TIER,
+  'sonnet':     SONNET_5_TIER,
+  'haiku':      HAIKU_4_5_TIER,
 };
 
 // 미등록 모델의 추정 계산용 폴백 단가 (Sonnet 기준)
-const FALLBACK_PRICING: ModelPricing = { input: 3.0, output: 15.0, cacheCreate: 3.75, cacheRead: 0.3 };
+const FALLBACK_PRICING: ModelPricing = SONNET_TIER;
 
-// Sonnet 5 출시 프로모션 단가 — 2026-08-31까지 실제 청구는 $2/$10 (정가 $3/$15).
-// 레코드 timestamp 기준으로 적용해 프로모션 종료 후에도 과거 기록이 올바르게 유지됨.
-const SONNET5_INTRO_PRICING: ModelPricing = { input: 2.0, output: 10.0, cacheCreate: 2.5, cacheRead: 0.2 };
-const SONNET5_INTRO_END = Date.UTC(2026, 8, 1); // 2026-09-01 00:00 UTC 이전이면 프로모션 단가
+/** 'us.anthropic.claude-opus-4-5-20251101-v1:0', 'claude-opus-5[1m]' 등 → 'opus-4-5', 'opus-5' */
+function normalizeModelId(model: string): string {
+  return model
+    .toLowerCase()
+    .replace(/\[.*\]$/, '')
+    .replace(/^.*anthropic\./, '')
+    .replace(/^claude-/, '')
+    .replace(/-v\d+(:\d+)?$/, '')
+    .replace(/[-@]\d{8}$/, '');
+}
 
 // 미등록 모델이면 null 반환 — 호출부에서 FALLBACK_PRICING으로 추정하되 unknownPricing으로 표시
-function getPricing(model: string, ts?: Date): ModelPricing | null {
-  if (!model) return null;
-  const lower = model.toLowerCase();
-  let p: ModelPricing | null = ALIAS_PRICING[lower] ?? null;
-  if (!p) {
-    for (const [key, pricing] of Object.entries(PRICING)) {
-      if (lower.includes(key)) { p = pricing; break; }
-    }
-  }
-  if (p === PRICING['sonnet-5'] && ts && ts.getTime() < SONNET5_INTRO_END) return SONNET5_INTRO_PRICING;
-  return p;
+function getPricing(model: string): ModelPricing | null {
+  return PRICING[normalizeModelId(model)] ?? null;
 }
 
 function getModelFamily(model: string): string {
   if (!model) return 'unknown';
-  const lower = model.toLowerCase();
-  // Claude 5 계열
-  if (lower.includes('fable-5'))   return 'claude-fable-5';
-  if (lower.includes('mythos-5'))  return 'claude-mythos-5';
-  if (lower.includes('opus-5'))    return 'claude-opus-5';
-  if (lower.includes('sonnet-5'))  return 'claude-sonnet-5';
-  // Claude Opus 4.x (구체적 버전 먼저)
-  if (lower.includes('opus-4-8'))  return 'claude-opus-4-8';
-  if (lower.includes('opus-4-7'))  return 'claude-opus-4-7';
-  if (lower.includes('opus-4-6'))  return 'claude-opus-4-6';
-  if (lower.includes('opus-4-5'))  return 'claude-opus-4-5';
-  if (lower.includes('opus-4-1'))  return 'claude-opus-4-1';
-  if (lower.includes('opus-4'))    return 'claude-opus-4';
-  // Claude Sonnet 4.x
-  if (lower.includes('haiku-4-5') || lower.includes('haiku4-5')) return 'claude-haiku-4-5';
-  if (lower.includes('sonnet-4'))  return 'claude-sonnet-4';
-  // Claude 3.x 계열
-  if (lower.includes('3-7-sonnet') || lower.includes('3.7-sonnet')) return 'claude-3-7-sonnet';
-  if (lower.includes('3-5-sonnet') || lower.includes('3.5-sonnet')) return 'claude-3-5-sonnet';
-  if (lower.includes('3-5-haiku')  || lower.includes('3.5-haiku'))  return 'claude-3-5-haiku';
-  if (lower.includes('3-opus'))    return 'claude-3-opus';
-  if (lower.includes('3-haiku'))   return 'claude-3-haiku';
-  if (lower.includes('3-sonnet'))  return 'claude-3-sonnet';
-  return model;
+  const id = normalizeModelId(model);
+  return id in PRICING ? `claude-${id}` : model;
 }
 
-function calculateCost(usage: { input: number; output: number; cacheCreate5m: number; cacheCreate1h: number; cacheRead: number }, model: string, ts?: Date): { cost: number; unknownPricing: boolean } {
-  const known = getPricing(model, ts);
-  const p = known ?? FALLBACK_PRICING;
-  // 1h TTL 캐시 쓰기는 단가표와 무관하게 input의 2배 (ccusage와 동일한 규칙)
+function calculateCost(usage: { input: number; output: number; cacheCreate5m: number; cacheCreate1h: number; cacheRead: number }, model: string): { cost: number; unknownPricing: boolean } {
+  const known = getPricing(model);
+  const pricing = known ?? FALLBACK_PRICING;
+  // 1h TTL 캐시 쓰기는 모든 모델에서 input의 2배
   const cost =
-    (usage.input * p.input +
-      usage.output * p.output +
-      usage.cacheCreate5m * p.cacheCreate +
-      usage.cacheCreate1h * p.input * 2 +
-      usage.cacheRead * p.cacheRead) /
+    (usage.input * pricing.input +
+      usage.output * pricing.output +
+      usage.cacheCreate5m * pricing.cacheCreate +
+      usage.cacheCreate1h * pricing.input * 2 +
+      usage.cacheRead * pricing.cacheRead) /
     1_000_000;
   return { cost, unknownPricing: known === null };
 }
@@ -275,7 +255,7 @@ async function parseFile(filePath: string, claudePath: string): Promise<ParsedRe
       const cacheCreate5m = u.cache_creation ? (u.cache_creation.ephemeral_5m_input_tokens || 0) : cacheCreate;
       // claudelytics/ccusage와 동일하게 항상 토큰으로 재계산
       // costUSD는 모델 정보 없이 계산 불가한 경우에만 폴백으로 사용
-      const calc = calculateCost({ input, output, cacheCreate5m, cacheCreate1h, cacheRead }, model, ts);
+      const calc = calculateCost({ input, output, cacheCreate5m, cacheCreate1h, cacheRead }, model);
       let cost = calc.cost;
       if (cost === 0 && raw.costUSD) cost = raw.costUSD;
 
@@ -376,7 +356,8 @@ const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
 // v5: 응답 단위 dedup용 messageId/requestId/isSidechain 추가 + 1h 캐시 쓰기 단가 분리
 // v6: Sonnet 5 출시 프로모션 단가($2/$10, ~2026-08-31) 기간 조건부 적용
 // v7: Opus 5 단가 추가 — 폴백 단가로 계산된 기존 opus-5 레코드 무효화
-const DISK_CACHE_VERSION = 7;
+// v8: 모델 ID 정확 일치 매칭 (Opus 5.5·Fable 5.1 분리) + Sonnet 5 정가 $2/$10 확정
+const DISK_CACHE_VERSION = 8;
 
 function loadDiskCache(): void {
   try {
@@ -504,133 +485,29 @@ export async function getUsageSummary(): Promise<UsageSummary> {
   const todayStr = toLocalDateStr(now);
   const thisMonthStr = toLocalMonthStr(now);
 
-  // Daily aggregation (로컬 시간 기준 - claudelytics와 동일)
-  const dailyMap = new Map<string, { usage: TokenUsage; models: Map<string, TokenUsage> }>();
-  for (const r of records) {
-    const dateStr = toLocalDateStr(r.timestamp);
-    if (!dailyMap.has(dateStr)) dailyMap.set(dateStr, { usage: emptyUsage(), models: new Map() });
-    const entry = dailyMap.get(dateStr)!;
-    entry.usage = addUsage(entry.usage, r.usage);
-    const mUsage = entry.models.get(r.family) || emptyUsage();
-    entry.models.set(r.family, addUsage(mUsage, r.usage));
-  }
-
-  const daily: DailyUsage[] = Array.from(dailyMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, { usage, models }]) => ({
-      date,
-      ...usage,
-      modelBreakdown: Object.fromEntries(models.entries()),
-    }));
-
-  // Last 30 days only for chart
-  const last30 = daily.slice(-30);
-
-  // Monthly (로컬 시간 기준)
-  const monthlyMap = new Map<string, TokenUsage>();
-  for (const r of records) {
-    const mStr = toLocalMonthStr(r.timestamp);
-    monthlyMap.set(mStr, addUsage(monthlyMap.get(mStr) || emptyUsage(), r.usage));
-  }
-
-  // Today / this month
-  const today = dailyMap.get(todayStr)?.usage || emptyUsage();
-  const thisMonth = monthlyMap.get(thisMonthStr) || emptyUsage();
-  const allTime = records.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
-
-  // Burn rate (last 2 hours)
-  const burnRate = getBurnRate(records, now);
-
-  // Projections (30 days forward from today)
-  const projections = getProjections(daily, now);
-
+  let today = emptyUsage();
+  let thisMonth = emptyUsage();
+  let allTime = emptyUsage();
   // 단가 미등록 모델 집계 — UI 경고 배너용
   const unknownMap = new Map<string, { records: number; estimatedCost: number }>();
-  for (const r of records) {
-    if (!r.unknownPricing) continue;
-    const e = unknownMap.get(r.model) ?? { records: 0, estimatedCost: 0 };
-    e.records++;
-    e.estimatedCost += r.usage.totalCost;
-    unknownMap.set(r.model, e);
+
+  for (const record of records) {
+    allTime = addUsage(allTime, record.usage);
+    if (toLocalMonthStr(record.timestamp) === thisMonthStr) thisMonth = addUsage(thisMonth, record.usage);
+    if (toLocalDateStr(record.timestamp) === todayStr) today = addUsage(today, record.usage);
+    if (record.unknownPricing) {
+      const unknown = unknownMap.get(record.model) ?? { records: 0, estimatedCost: 0 };
+      unknown.records++;
+      unknown.estimatedCost += record.usage.totalCost;
+      unknownMap.set(record.model, unknown);
+    }
   }
+
   const unknownModels: UnknownModelUsage[] = Array.from(unknownMap.entries())
-    .map(([model, v]) => ({ model, ...v }))
+    .map(([model, unknown]) => ({ model, ...unknown }))
     .sort((a, b) => b.estimatedCost - a.estimatedCost);
 
-  return {
-    today,
-    thisMonth,
-    allTime,
-    daily: last30,
-    monthly: Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, usage]) => ({ month, ...usage })),
-    burnRate,
-    projections,
-    unknownModels,
-  };
-}
-
-function getBurnRate(records: ParsedRecord[], now: Date): BurnRate {
-  const twoHoursAgo = new Date(now.getTime() - 2 * 3600_000);
-  const oneHourAgo = new Date(now.getTime() - 3600_000);
-
-  const recent2h = records.filter((r) => r.timestamp >= twoHoursAgo);
-  const recent1h = records.filter((r) => r.timestamp >= oneHourAgo);
-
-  const cost2h = recent2h.reduce((s, r) => s + r.usage.totalCost, 0);
-  const tokens2h = recent2h.reduce((s, r) => s + r.usage.totalTokens, 0);
-  const cost1h = recent1h.reduce((s, r) => s + r.usage.totalCost, 0);
-
-  const costPerHour = cost2h / 2;
-  const tokensPerHour = tokens2h / 2;
-
-  let trend: 'increasing' | 'decreasing' | 'stable' = 'stable';
-  if (cost1h > costPerHour * 1.2) trend = 'increasing';
-  else if (cost1h < costPerHour * 0.8) trend = 'decreasing';
-
-  // Count unique sessions active in last hour
-  const activeSessions = new Set(recent1h.map((r) => r.sessionId)).size;
-
-  return {
-    tokensPerHour,
-    costPerHour,
-    projectedDailyCost: costPerHour * 24,
-    projectedMonthlyCost: costPerHour * 24 * 30,
-    trend,
-    activeSessions,
-  };
-}
-
-function getProjections(daily: DailyUsage[], now: Date): Projection[] {
-  // Use last 7 days average as baseline
-  const last7 = daily.slice(-7);
-  const avgDailyCost = last7.length > 0
-    ? last7.reduce((s, d) => s + d.totalCost, 0) / last7.length
-    : 0;
-  const avgDailyTokens = last7.length > 0
-    ? last7.reduce((s, d) => s + d.totalTokens, 0) / last7.length
-    : 0;
-
-  const result: Projection[] = [];
-
-  // Past 30 days (actual)
-  for (const d of daily) {
-    result.push({ date: d.date, projectedCost: d.totalCost, projectedTokens: d.totalTokens, isProjected: false });
-  }
-
-  // Next 14 days (projected)
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date(now.getTime() + i * 86_400_000);
-    result.push({
-      date: toLocalDateStr(d),
-      projectedCost: avgDailyCost,
-      projectedTokens: avgDailyTokens,
-      isProjected: true,
-    });
-  }
-
-  return result;
+  return { today, thisMonth, allTime, unknownModels };
 }
 
 export async function getModelUsage(): Promise<ModelUsage[]> {
@@ -655,7 +532,7 @@ export async function getModelUsage(): Promise<ModelUsage[]> {
   });
 }
 
-export async function getSessions(): Promise<import('@/types').SessionUsage[]> {
+export async function getSessions(): Promise<SessionUsage[]> {
   const records = await getAllRecords();
   return memoByVersion('sessions', () => {
     const sessionMap = new Map<string, { usage: TokenUsage; lastActivity: Date; projectName: string }>();
