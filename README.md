@@ -35,10 +35,24 @@ docker compose up -d
 
 ### 로컬 개발
 
+Node.js 22.13 이상과 pnpm 11.28.3을 사용합니다. Docker에서도 동일한 pnpm 버전을 사용합니다.
+
 ```bash
-pnpm install
+npm install -g pnpm@11.28.3
+pnpm install --frozen-lockfile
 pnpm dev
 # → http://localhost:3000
+```
+
+pnpm 11 설정은 `pnpm-workspace.yaml`에서 관리합니다. 기존 dependency override와 빌드 스크립트 허용 목록을 유지하며, 새 의존성의 빌드 스크립트는 검토 후 명시적으로 허용해야 합니다.
+
+검증 명령:
+
+```bash
+pnpm lint
+pnpm exec next typegen
+pnpm exec tsc --noEmit
+pnpm build
 ```
 
 데이터 경로 변경 시:

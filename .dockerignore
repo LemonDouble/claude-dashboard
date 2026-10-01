@@ -1,0 +1,9 @@
+.git
+node_modules
+.next
+.env*
+.cache
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+.pnpm-debug.log*

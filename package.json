@@ -13,7 +13,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.47.0",
-    "next": "16.3.5",
+    "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "^3.10.1",
@@ -27,22 +27,13 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.3.8",
     "shadcn": "^4.21.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   },
-  "pnpm": {
-    "overrides": {
-      "postcss": "^8.5.10",
-      "sharp": "^0.35.0",
-      "ip-address": "^10.1.1",
-      "@hono/node-server": "^2.0.5"
-    },
-    "onlyBuiltDependencies": [
-      "msw",
-      "sharp",
-      "unrs-resolver"
-    ]
+  "packageManager": "pnpm@11.28.3",
+  "engines": {
+    "node": ">=22.13.0"
   }
 }
