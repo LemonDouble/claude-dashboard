@@ -92,6 +92,7 @@ CLAUDE_PATH=/path/to/.claude pnpm dev
 - 모델별 단가는 `src/lib/parser.ts`의 `PRICING`에 있습니다. 기준은 [공식 가격표](https://platform.claude.com/docs/en/about-claude/pricing)입니다.
 - 모델 ID는 날짜·`[1m]` 접미사를 떼어낸 뒤 **정확히 일치**하는 키로 조회합니다. 단가가 없는 모델은 Sonnet 단가로 추정하고, 상단에 경고 배너를 띄웁니다.
 - 1시간 TTL 캐시 쓰기는 모든 모델에서 input 단가의 2배로 계산합니다.
+- Haiku 5.5는 요청의 프롬프트(input + 캐시 쓰기·읽기)가 100K 토큰을 넘으면 해당 요청 전체에 상위 구간 단가를 적용합니다.
 
 ---
 

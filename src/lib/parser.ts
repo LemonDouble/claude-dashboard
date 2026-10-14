@@ -8,15 +8,23 @@ import { PERIOD_HOURS } from '@/lib/buckets';
 // Claude pricing per million tokens (USD) — https://platform.claude.com/docs/en/about-claude/pricing
 // 키는 normalizeModelId 결과와 정확히 일치해야 함 (부분 매칭은 신모델을 구모델 단가로 삼켜버림)
 // cacheCreate = 5분 캐시 쓰기 요금 기준
-type ModelPricing = { input: number; output: number; cacheCreate: number; cacheRead: number };
+type ModelPricing = { input: number; output: number; cacheCreate: number; cacheRead: number; overLongPrompt?: ModelPricing };
+
+// Haiku 5.5는 요청의 프롬프트(입력 + 캐시 쓰기/읽기)가 100K 토큰을 넘으면 요청 전체에 상위 단가 적용
+const LONG_PROMPT_THRESHOLD = 100_000;
 
 const FABLE_5_1_TIER: ModelPricing = { input: 10.0, output: 50.0, cacheCreate: 12.5,  cacheRead: 0.25 };
 const FABLE_5_TIER: ModelPricing   = { input: 10.0, output: 50.0, cacheCreate: 12.5,  cacheRead: 1.0  };
 const OPUS_5_5_TIER: ModelPricing  = { input: 4.0,  output: 20.0, cacheCreate: 5.0,   cacheRead: 0.2  };
 const OPUS_TIER: ModelPricing      = { input: 5.0,  output: 25.0, cacheCreate: 6.25,  cacheRead: 0.5  };
 const OPUS_LEGACY_TIER: ModelPricing = { input: 15.0, output: 75.0, cacheCreate: 18.75, cacheRead: 1.5 };
+const SONNET_5_5_TIER: ModelPricing = { input: 2.0, output: 10.0, cacheCreate: 2.5,   cacheRead: 0.1  };
 const SONNET_5_TIER: ModelPricing  = { input: 2.0,  output: 10.0, cacheCreate: 2.5,   cacheRead: 0.2  };
 const SONNET_TIER: ModelPricing    = { input: 3.0,  output: 15.0, cacheCreate: 3.75,  cacheRead: 0.3  };
+const HAIKU_5_5_TIER: ModelPricing = {
+  input: 0.1, output: 0.5, cacheCreate: 0.125, cacheRead: 0.01,
+  overLongPrompt: { input: 0.5, output: 2.5, cacheCreate: 0.625, cacheRead: 0.05 },
+};
 const HAIKU_4_5_TIER: ModelPricing = { input: 1.0,  output: 5.0,  cacheCreate: 1.25,  cacheRead: 0.1  };
 
 const PRICING: Record<string, ModelPricing> = {
@@ -26,6 +34,7 @@ const PRICING: Record<string, ModelPricing> = {
   'mythos-5':   FABLE_5_TIER,
   'opus-5-5':   OPUS_5_5_TIER,
   'opus-5':     OPUS_TIER,
+  'sonnet-5-5': SONNET_5_5_TIER,
   'sonnet-5':   SONNET_5_TIER,
   'opus-4-8':   OPUS_TIER,
   'opus-4-7':   OPUS_TIER,
@@ -36,6 +45,7 @@ const PRICING: Record<string, ModelPricing> = {
   'sonnet-4-6': SONNET_TIER,
   'sonnet-4-5': SONNET_TIER,
   'sonnet-4':   SONNET_TIER,
+  'haiku-5-5':  HAIKU_5_5_TIER,
   'haiku-4-5':  HAIKU_4_5_TIER,
   '3-7-sonnet': SONNET_TIER,
   '3-5-sonnet': SONNET_TIER,
@@ -77,7 +87,9 @@ function getModelFamily(model: string): string {
 
 function calculateCost(usage: { input: number; output: number; cacheCreate5m: number; cacheCreate1h: number; cacheRead: number }, model: string): { cost: number; unknownPricing: boolean } {
   const known = getPricing(model);
-  const pricing = known ?? FALLBACK_PRICING;
+  const basePricing = known ?? FALLBACK_PRICING;
+  const promptTokens = usage.input + usage.cacheCreate5m + usage.cacheCreate1h + usage.cacheRead;
+  const pricing = promptTokens > LONG_PROMPT_THRESHOLD ? basePricing.overLongPrompt ?? basePricing : basePricing;
   // 1h TTL 캐시 쓰기는 모든 모델에서 input의 2배
   const cost =
     (usage.input * pricing.input +
@@ -357,7 +369,8 @@ const DISK_CACHE_FILE = path.join(CACHE_DIR, 'records.json');
 // v6: Sonnet 5 출시 프로모션 단가($2/$10, ~2026-08-31) 기간 조건부 적용
 // v7: Opus 5 단가 추가 — 폴백 단가로 계산된 기존 opus-5 레코드 무효화
 // v8: 모델 ID 정확 일치 매칭 (Opus 5.5·Fable 5.1 분리) + Sonnet 5 정가 $2/$10 확정
-const DISK_CACHE_VERSION = 8;
+// v9: Sonnet 5.5·Haiku 5.5 단가 추가 — 폴백 단가로 계산된 기존 레코드 무효화
+const DISK_CACHE_VERSION = 9;
 
 function loadDiskCache(): void {
   try {

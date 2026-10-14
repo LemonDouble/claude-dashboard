@@ -63,14 +63,16 @@ export const SERIES_COLORS = [
 
 /**
  * 모델명 → 색 매핑 (엔티티 고정 — 시리즈 수가 바뀌어도 색이 따라가지 않도록).
- * 상시 공존하는 현세대 4종(fable-5.1/opus-5.5/sonnet-5/haiku)은 all-pairs 검증을 통과한
+ * 상시 공존하는 현세대 4종(fable-5.1/opus-5.5/sonnet-5.5/haiku-5.5)은 all-pairs 검증을 통과한
  * gold/blue/magenta/green 4색 조합에 배정. 구세대는 잔여 슬롯을 공유, 3.x는 기본 그레이.
  */
 export const MODEL_COLORS: Record<string, string> = {
   'claude-fable-5-1': CHART.gold,
   'claude-opus-5-5': CHART.blue,
-  'claude-sonnet-5': CHART.magenta,
-  'claude-haiku-4-5': CHART.green,
+  'claude-sonnet-5-5': CHART.magenta,
+  'claude-haiku-5-5': CHART.green,
+  'claude-sonnet-5': CHART.aqua,
+  'claude-haiku-4-5': CHART.coral,
   'claude-opus-5': CHART.coral,
   'claude-fable-5': CHART.orange,
   'claude-mythos-5-1': CHART.violet,
