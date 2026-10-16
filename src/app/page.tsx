@@ -156,7 +156,7 @@ function DashboardInner() {
     return (
       <div className="h-screen bg-background flex items-center justify-center text-muted-foreground">
         <div className="text-center">
-          <div className="font-display text-2xl text-foreground mb-2">Claude 대시보드</div>
+          <div className="font-heading font-bold text-2xl text-foreground mb-2">Claude 대시보드</div>
           <div className="text-sm">사용 데이터 파싱 중…</div>
         </div>
       </div>
@@ -210,7 +210,7 @@ function DashboardInner() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <Image src="/lemon_logo.webp" alt="logo" width={28} height={28} className="rounded-full" />
-          <span className="font-display text-sm tracking-tight text-foreground">Claude 대시보드</span>
+          <span className="font-heading font-bold text-sm tracking-tight text-foreground">Claude 대시보드</span>
         </div>
         <div className="flex items-center gap-2.5">
           <button
