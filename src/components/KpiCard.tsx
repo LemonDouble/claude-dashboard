@@ -23,7 +23,7 @@ const accentBar: Record<Accent, string> = {
 export function KpiCard({ title, value, krw, sub, icon, accent = 'default' }: KpiCardProps) {
   return (
     <div
-      className={`bg-card border border-border border-l-2 ${accentBar[accent]} rounded-xl p-3 flex flex-col gap-1 transition-colors hover:border-primary-dim`}
+      className={`bg-card border border-border border-l-2 ${accentBar[accent]} rounded-xl p-3 flex flex-col gap-1 transition-colors hover:border-primary-dim-border`}
     >
       <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
         <span>{title}</span>

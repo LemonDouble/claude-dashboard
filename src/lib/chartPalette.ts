@@ -16,12 +16,12 @@ export const DS = {
 
   // Warm grays
   warmGray: '#A89E95',
-  warmGrayDark: '#5C524A',
+  warmGrayDark: '#8D7E72',
   warmGrayBorder: '#2E2723',
   warmGraySurface: '#1C1816',
 
   // 차트 축/그리드/참조선
-  axis: '#5C524A',
+  axis: '#8D7E72',
   axisDim: '#3D3530',
   tooltipBg: '#1C1816',
   tooltipBorder: '#2E2723',
